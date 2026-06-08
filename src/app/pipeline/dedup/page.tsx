@@ -1,4 +1,5 @@
 import { getDedupKpis, listDuplicateLinks } from '@/lib/db/queries/dedup'
+import Pagination from '@/components/Pagination'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,8 +29,24 @@ function overrideBadge(o: string | null) {
   return 'badge badge-muted'
 }
 
-export default async function DedupPage() {
-  const [kpis, links] = await Promise.all([getDedupKpis(), listDuplicateLinks(50)])
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function DedupPage(props: PageProps) {
+  const searchParams = await props.searchParams
+  const indexStr = searchParams.index
+  const pageIndex = Number(Array.isArray(indexStr) ? indexStr[0] : indexStr || '0')
+  const limit = 50
+  const offset = pageIndex * limit
+
+  const [kpis, rawLinks] = await Promise.all([
+    getDedupKpis(),
+    listDuplicateLinks(limit + 1, offset),
+  ])
+
+  const hasNext = rawLinks.length > limit
+  const links = rawLinks.slice(0, limit)
 
   return (
     <>
@@ -98,6 +115,14 @@ export default async function DedupPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentIndex={pageIndex}
+        hasNext={hasNext}
+        totalCount={kpis.total_links}
+        limit={limit}
+        searchParams={searchParams}
+      />
     </>
   )
 }

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import type { CSSProperties } from 'react'
 import { getRankingKpis, listRankings } from '@/lib/db/queries/ranking'
+import Pagination from '@/components/Pagination'
 
 const viewLinkStyle: CSSProperties = {
   background: 'var(--accent)',
@@ -51,13 +52,29 @@ function fitColor(score: number | null): string {
   return 'var(--red)'
 }
 
-export default async function RankingPage() {
-  const [kpis, rows] = await Promise.all([getRankingKpis(), listRankings(50)])
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function RankingPage(props: PageProps) {
+  const searchParams = await props.searchParams
+  const indexStr = searchParams.index
+  const pageIndex = Number(Array.isArray(indexStr) ? indexStr[0] : indexStr || '0')
+  const limit = 50
+  const offset = pageIndex * limit
+
+  const [kpis, rawRows] = await Promise.all([
+    getRankingKpis(),
+    listRankings(limit + 1, offset),
+  ])
+
+  const hasNext = rawRows.length > limit
+  const rows = rawRows.slice(0, limit)
 
   return (
     <>
       <div className="page-header">
-        <h1>Ranking</h1>
+        <h1>Page Ranking</h1>
         <p>Bid outcomes scored by fit; sorted by fit_score descending</p>
       </div>
 
@@ -132,6 +149,14 @@ export default async function RankingPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentIndex={pageIndex}
+        hasNext={hasNext}
+        totalCount={kpis.total_scored}
+        limit={limit}
+        searchParams={searchParams}
+      />
     </>
   )
 }

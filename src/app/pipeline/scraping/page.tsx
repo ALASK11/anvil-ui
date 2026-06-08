@@ -3,6 +3,7 @@ import {
   listSourceStats,
   listRecentScrapes,
 } from '@/lib/db/queries/scraping'
+import Pagination from '@/components/Pagination'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,12 +16,25 @@ function formatDate(d: Date | null) {
   return new Date(d).toISOString().slice(0, 10)
 }
 
-export default async function ScrapingPage() {
-  const [kpis, sources, recent] = await Promise.all([
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function ScrapingPage(props: PageProps) {
+  const searchParams = await props.searchParams
+  const indexStr = searchParams.index
+  const pageIndex = Number(Array.isArray(indexStr) ? indexStr[0] : indexStr || '0')
+  const limit = 25
+  const offset = pageIndex * limit
+
+  const [kpis, sources, rawRecent] = await Promise.all([
     getScrapingKpis(),
     listSourceStats(),
-    listRecentScrapes(25),
+    listRecentScrapes(limit + 1, offset),
   ])
+
+  const hasNext = rawRecent.length > limit
+  const recent = rawRecent.slice(0, limit)
 
   return (
     <>
@@ -112,6 +126,14 @@ export default async function ScrapingPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentIndex={pageIndex}
+        hasNext={hasNext}
+        totalCount={kpis.opps_total}
+        limit={limit}
+        searchParams={searchParams}
+      />
     </>
   )
 }

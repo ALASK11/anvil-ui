@@ -37,7 +37,7 @@ export interface RankingRow {
   decided_at: Date | null
 }
 
-export async function listRankings(limit = 50): Promise<RankingRow[]> {
+export async function listRankings(limit = 50, offset = 0): Promise<RankingRow[]> {
   const pool = await getPool()
   const { rows } = await pool.query<RankingRow>(
     `
@@ -58,9 +58,9 @@ export async function listRankings(limit = 50): Promise<RankingRow[]> {
     LEFT JOIN opportunities o ON o.id = bo.opportunity_id
     WHERE bo.fit_score IS NOT NULL
     ORDER BY bo.fit_score DESC NULLS LAST, bo.scored_at DESC NULLS LAST
-    LIMIT $1
+    LIMIT $1 OFFSET $2
     `,
-    [limit],
+    [limit, offset],
   )
   return rows
 }

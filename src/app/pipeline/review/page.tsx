@@ -1,4 +1,5 @@
 import { getReviewKpis, listReviewQueue } from '@/lib/db/queries/review'
+import Pagination from '@/components/Pagination'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,8 +36,24 @@ function daysUntil(d: Date | null): { label: string; color: string } {
   return { label: `${diff}d`, color: 'var(--text-muted)' }
 }
 
-export default async function ReviewPage() {
-  const [kpis, rows] = await Promise.all([getReviewKpis(), listReviewQueue(50)])
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function ReviewPage(props: PageProps) {
+  const searchParams = await props.searchParams
+  const indexStr = searchParams.index
+  const pageIndex = Number(Array.isArray(indexStr) ? indexStr[0] : indexStr || '0')
+  const limit = 50
+  const offset = pageIndex * limit
+
+  const [kpis, rawRows] = await Promise.all([
+    getReviewKpis(),
+    listReviewQueue(limit + 1, offset),
+  ])
+
+  const hasNext = rawRows.length > limit
+  const rows = rawRows.slice(0, limit)
 
   return (
     <>
@@ -109,6 +126,13 @@ export default async function ReviewPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentIndex={pageIndex}
+        hasNext={hasNext}
+        limit={limit}
+        searchParams={searchParams}
+      />
     </>
   )
 }

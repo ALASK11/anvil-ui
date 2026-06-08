@@ -40,7 +40,7 @@ export interface SupplierRow {
   updated_at: Date | null
 }
 
-export async function listSuppliers(): Promise<SupplierRow[]> {
+export async function listSuppliers(limit = 50, offset = 0): Promise<SupplierRow[]> {
   const pool = await getPool()
   const { rows } = await pool.query<SupplierRow>(
     `
@@ -61,7 +61,9 @@ export async function listSuppliers(): Promise<SupplierRow[]> {
       updated_at
     FROM suppliers
     ORDER BY is_active DESC NULLS LAST, name ASC
+    LIMIT $1 OFFSET $2
     `,
+    [limit, offset],
   )
   return rows
 }

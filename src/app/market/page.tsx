@@ -5,6 +5,7 @@
 // charts, etc.).
 
 import { getMarketKpis, listFpdsMarket } from '@/lib/db/queries/market'
+import Pagination from '@/components/Pagination'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,8 +24,24 @@ function yoyColor(y: number | null) {
   return 'var(--text-muted)'
 }
 
-export default async function MarketPage() {
-  const [kpis, rows] = await Promise.all([getMarketKpis(), listFpdsMarket(100)])
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function MarketPage(props: PageProps) {
+  const searchParams = await props.searchParams
+  const indexStr = searchParams.index
+  const pageIndex = Number(Array.isArray(indexStr) ? indexStr[0] : indexStr || '0')
+  const limit = 100
+  const offset = pageIndex * limit
+
+  const [kpis, rawRows] = await Promise.all([
+    getMarketKpis(),
+    listFpdsMarket(limit + 1, offset),
+  ])
+
+  const hasNext = rawRows.length > limit
+  const rows = rawRows.slice(0, limit)
 
   return (
     <>
@@ -119,6 +136,14 @@ export default async function MarketPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentIndex={pageIndex}
+        hasNext={hasNext}
+        totalCount={kpis.total_rows}
+        limit={limit}
+        searchParams={searchParams}
+      />
     </>
   )
 }

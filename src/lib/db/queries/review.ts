@@ -38,7 +38,7 @@ export interface ReviewRow {
   decided_at: Date | null
 }
 
-export async function listReviewQueue(limit = 50): Promise<ReviewRow[]> {
+export async function listReviewQueue(limit = 50, offset = 0): Promise<ReviewRow[]> {
   const pool = await getPool()
   const { rows } = await pool.query<ReviewRow>(
     `
@@ -62,9 +62,9 @@ export async function listReviewQueue(limit = 50): Promise<ReviewRow[]> {
       (bo.decision IS NULL) DESC,
       o.response_deadline ASC NULLS LAST,
       bo.scored_at DESC NULLS LAST
-    LIMIT $1
+    LIMIT $1 OFFSET $2
     `,
-    [limit],
+    [limit, offset],
   )
   return rows
 }

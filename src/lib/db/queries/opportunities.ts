@@ -1,7 +1,7 @@
 import { getPool } from '../pool'
 import type { OpportunityListRow } from '../types'
 
-export async function listOpportunities(limit = 100): Promise<OpportunityListRow[]> {
+export async function listOpportunities(limit = 100, offset = 0): Promise<OpportunityListRow[]> {
   const pool = await getPool()
   const { rows } = await pool.query<OpportunityListRow>(
     `
@@ -18,9 +18,9 @@ export async function listOpportunities(limit = 100): Promise<OpportunityListRow
       (SELECT COUNT(*)::int FROM sourcing_results WHERE opportunity_id = o.id) AS bid_count
     FROM opportunities o
     ORDER BY o.posted_date DESC NULLS LAST
-    LIMIT $1
+    LIMIT $1 OFFSET $2
     `,
-    [limit],
+    [limit, offset],
   )
   return rows
 }

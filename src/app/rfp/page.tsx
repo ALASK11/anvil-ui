@@ -1,5 +1,6 @@
 import { listOpportunities, getOpportunityKpis } from '@/lib/db/queries/opportunities'
 import type { OpportunityListRow } from '@/lib/db/types'
+import Pagination from '@/components/Pagination'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,8 +37,24 @@ function formatCents(cents: number | null) {
   return `$${dollars.toFixed(0)}`
 }
 
-export default async function RFPPage() {
-  const [rows, kpis] = await Promise.all([listOpportunities(100), getOpportunityKpis()])
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function RFPPage(props: PageProps) {
+  const searchParams = await props.searchParams
+  const indexStr = searchParams.index
+  const pageIndex = Number(Array.isArray(indexStr) ? indexStr[0] : indexStr || '0')
+  const limit = 100
+  const offset = pageIndex * limit
+
+  const [rawRows, kpis] = await Promise.all([
+    listOpportunities(limit + 1, offset),
+    getOpportunityKpis(),
+  ])
+
+  const hasNext = rawRows.length > limit
+  const rows = rawRows.slice(0, limit)
 
   return (
     <>
@@ -109,6 +126,14 @@ export default async function RFPPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentIndex={pageIndex}
+        hasNext={hasNext}
+        totalCount={kpis.total}
+        limit={limit}
+        searchParams={searchParams}
+      />
     </>
   )
 }

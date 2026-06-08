@@ -42,7 +42,7 @@ export interface FpdsMarketRow {
   top_awardees_count: number | null
 }
 
-export async function listFpdsMarket(limit = 100): Promise<FpdsMarketRow[]> {
+export async function listFpdsMarket(limit = 100, offset = 0): Promise<FpdsMarketRow[]> {
   const pool = await getPool()
   const { rows } = await pool.query<FpdsMarketRow>(
     `
@@ -68,9 +68,9 @@ export async function listFpdsMarket(limit = 100): Promise<FpdsMarketRow[]> {
       END AS top_awardees_count
     FROM fpds_market
     ORDER BY fiscal_year DESC NULLS LAST, total_obligations DESC NULLS LAST
-    LIMIT $1
+    LIMIT $1 OFFSET $2
     `,
-    [limit],
+    [limit, offset],
   )
   return rows
 }

@@ -11,10 +11,12 @@ const navItems = [
   { href: '/', label: 'Dashboard' },
   { section: 'Pipeline' },
   { href: '/pipeline/scraping', label: 'Scraping' },
-  { href: '/pipeline/dedup', label: 'Deduplication' },
+  // TODO: re-enable once deduplication is implemented
+  // { href: '/pipeline/dedup', label: 'Deduplication' },
   { href: '/pipeline/parsing', label: 'Parsing' },
   { href: '/pipeline/sourcing', label: 'Sourcing' },
-  { href: '/pipeline/ranking', label: 'Ranking' },
+  // TODO: re-enable once the ranking algorithm is implemented
+  // { href: '/pipeline/ranking', label: 'Ranking' },
   { href: '/pipeline/review', label: 'Review & Submit' },
   { section: 'Data' },
   { href: '/rfp', label: 'RFPs' },

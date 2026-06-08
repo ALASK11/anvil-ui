@@ -34,7 +34,7 @@ export interface DuplicateLinkRow {
   created_at: Date | null
 }
 
-export async function listDuplicateLinks(limit = 50): Promise<DuplicateLinkRow[]> {
+export async function listDuplicateLinks(limit = 50, offset = 0): Promise<DuplicateLinkRow[]> {
   const pool = await getPool()
   const { rows } = await pool.query<DuplicateLinkRow>(
     `
@@ -53,9 +53,9 @@ export async function listDuplicateLinks(limit = 50): Promise<DuplicateLinkRow[]
     LEFT JOIN opportunities a ON a.id = dl.opportunity_a
     LEFT JOIN opportunities b ON b.id = dl.opportunity_b
     ORDER BY dl.created_at DESC NULLS LAST
-    LIMIT $1
+    LIMIT $1 OFFSET $2
     `,
-    [limit],
+    [limit, offset],
   )
   return rows
 }

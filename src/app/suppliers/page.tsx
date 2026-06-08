@@ -4,6 +4,7 @@
 // the supplier-management workflow is clearer.
 
 import { getSuppliersKpis, listSuppliers } from '@/lib/db/queries/suppliers'
+import Pagination from '@/components/Pagination'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,8 +37,24 @@ function reliabilityBadge(score: number | null) {
   return 'badge badge-red'
 }
 
-export default async function SuppliersPage() {
-  const [kpis, suppliers] = await Promise.all([getSuppliersKpis(), listSuppliers()])
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function SuppliersPage(props: PageProps) {
+  const searchParams = await props.searchParams
+  const indexStr = searchParams.index
+  const pageIndex = Number(Array.isArray(indexStr) ? indexStr[0] : indexStr || '0')
+  const limit = 50
+  const offset = pageIndex * limit
+
+  const [kpis, rawSuppliers] = await Promise.all([
+    getSuppliersKpis(),
+    listSuppliers(limit + 1, offset),
+  ])
+
+  const hasNext = rawSuppliers.length > limit
+  const suppliers = rawSuppliers.slice(0, limit)
 
   return (
     <>
@@ -125,6 +142,14 @@ export default async function SuppliersPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentIndex={pageIndex}
+        hasNext={hasNext}
+        totalCount={kpis.total}
+        limit={limit}
+        searchParams={searchParams}
+      />
     </>
   )
 }

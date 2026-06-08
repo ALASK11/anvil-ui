@@ -39,7 +39,7 @@ export interface ClinItemRow {
   sourcing_status: string | null
 }
 
-export async function listClinItems(limit = 50): Promise<ClinItemRow[]> {
+export async function listClinItems(limit = 50, offset = 0): Promise<ClinItemRow[]> {
   const pool = await getPool()
   const { rows } = await pool.query<ClinItemRow>(
     `
@@ -58,9 +58,9 @@ export async function listClinItems(limit = 50): Promise<ClinItemRow[]> {
     FROM clin_items ci
     LEFT JOIN opportunities o ON o.id = ci.opportunity_id
     ORDER BY ci.created_at DESC NULLS LAST
-    LIMIT $1
+    LIMIT $1 OFFSET $2
     `,
-    [limit],
+    [limit, offset],
   )
   return rows
 }

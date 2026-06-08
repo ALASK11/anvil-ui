@@ -17,11 +17,16 @@ async function createPool(): Promise<Pool> {
   const instanceConnectionName = required('INSTANCE_CONNECTION_NAME')
   const user = required('DB_USER')
   const database = required('DB_NAME')
+  const password = process.env.DB_PASSWORD
+
+  // Use built-in password auth when DB_PASSWORD is provided (e.g. local dev),
+  // otherwise fall back to IAM auth (e.g. production on Cloud Run).
+  const usePassword = Boolean(password)
 
   const connector = new Connector()
   const clientOpts = await connector.getOptions({
     instanceConnectionName,
-    authType: AuthTypes.IAM,
+    authType: usePassword ? AuthTypes.PASSWORD : AuthTypes.IAM,
     ipType: IpAddressTypes.PUBLIC,
   })
 
@@ -29,6 +34,7 @@ async function createPool(): Promise<Pool> {
     ...clientOpts,
     user,
     database,
+    ...(usePassword ? { password } : {}),
     max: 5,
   })
 }

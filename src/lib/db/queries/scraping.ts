@@ -54,7 +54,7 @@ export interface RecentScrape {
   created_at: Date | null
 }
 
-export async function listRecentScrapes(limit = 25): Promise<RecentScrape[]> {
+export async function listRecentScrapes(limit = 25, offset = 0): Promise<RecentScrape[]> {
   const pool = await getPool()
   const { rows } = await pool.query<RecentScrape>(
     `
@@ -68,9 +68,9 @@ export async function listRecentScrapes(limit = 25): Promise<RecentScrape[]> {
       created_at
     FROM opportunities
     ORDER BY created_at DESC NULLS LAST
-    LIMIT $1
+    LIMIT $1 OFFSET $2
     `,
-    [limit],
+    [limit, offset],
   )
   return rows
 }

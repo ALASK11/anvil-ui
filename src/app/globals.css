@@ -156,7 +156,9 @@ a:hover {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
-  overflow: hidden;
+  /* Scroll horizontally when a wide table exceeds the viewport instead of
+     overflowing the page. */
+  overflow-x: auto;
   margin-bottom: 2rem;
 }
 
@@ -182,6 +184,7 @@ th {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 td {
@@ -285,3 +288,54 @@ tr:hover td {
 .empty-state p {
   font-size: 0.875rem;
 }
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.pagination-info {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.pagination-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-decoration: none;
+}
+
+.pagination-btn:hover:not(.disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+  text-decoration: none;
+}
+
+.pagination-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+

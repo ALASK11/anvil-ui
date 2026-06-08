@@ -1,4 +1,5 @@
 import { getParsingKpis, listClinItems } from '@/lib/db/queries/parsing'
+import Pagination from '@/components/Pagination'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,8 +16,24 @@ function statusBadge(status: string | null) {
   return `badge ${(status && map[status]) || 'badge-muted'}`
 }
 
-export default async function ParsingPage() {
-  const [kpis, items] = await Promise.all([getParsingKpis(), listClinItems(50)])
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function ParsingPage(props: PageProps) {
+  const searchParams = await props.searchParams
+  const indexStr = searchParams.index
+  const pageIndex = Number(Array.isArray(indexStr) ? indexStr[0] : indexStr || '0')
+  const limit = 50
+  const offset = pageIndex * limit
+
+  const [kpis, rawItems] = await Promise.all([
+    getParsingKpis(),
+    listClinItems(limit + 1, offset),
+  ])
+
+  const hasNext = rawItems.length > limit
+  const items = rawItems.slice(0, limit)
 
   return (
     <>
@@ -88,6 +105,14 @@ export default async function ParsingPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        currentIndex={pageIndex}
+        hasNext={hasNext}
+        totalCount={kpis.total_clin_items}
+        limit={limit}
+        searchParams={searchParams}
+      />
     </>
   )
 }
