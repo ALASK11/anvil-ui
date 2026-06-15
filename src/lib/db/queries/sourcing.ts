@@ -26,17 +26,11 @@ export async function getSourcingKpis(): Promise<SourcingKpis> {
   return rows[0]
 }
 
-export interface SourcingDocument {
-  filename: string | null
-  gcs_url: string | null
-}
-
 export interface SourcingResultRow {
   id: string
   opportunity_id: string
   opp_title: string | null
   response_deadline: Date | null
-  documents: SourcingDocument[] | null
   supplier_name: string | null
   retailer_name: string | null
   product_name: string | null
@@ -60,16 +54,6 @@ const SOURCING_RESULTS_SELECT = `
     sr.opportunity_id,
     o.title AS opp_title,
     o.response_deadline,
-    (
-      SELECT json_agg(
-               json_build_object('filename', d.filename, 'gcs_url', d.gcs_url)
-               ORDER BY d.created_at
-             )
-      FROM opportunity_documents d
-      WHERE d.opportunity_id = sr.opportunity_id
-        AND d.recalled_at IS NULL
-        AND d.superseded_by IS NULL
-    ) AS documents,
     s.name  AS supplier_name,
     sr.retailer_name,
     sr.product_name,
@@ -136,11 +120,27 @@ export interface GroupedSourcingRow {
   confidences: string | null
 }
 
+export interface ListGroupedSourcingResultsOptions {
+  limit?: number
+  offset?: number
+  hasDocuments?: boolean
+}
+
 export async function listGroupedSourcingResults(
-  limit = 50,
-  offset = 0,
+  options: ListGroupedSourcingResultsOptions = {},
 ): Promise<GroupedSourcingRow[]> {
+  const { limit = 50, offset = 0, hasDocuments = false } = options
   const pool = await getPool()
+
+  const whereClause = hasDocuments
+    ? `WHERE EXISTS (
+         SELECT 1 FROM opportunity_documents d
+         WHERE d.opportunity_id = sr.opportunity_id
+           AND d.recalled_at IS NULL
+           AND d.superseded_by IS NULL
+       )`
+    : ''
+
   const { rows } = await pool.query<GroupedSourcingRow>(
     `
     SELECT
@@ -158,6 +158,7 @@ export async function listGroupedSourcingResults(
     FROM sourcing_results sr
     LEFT JOIN opportunities o ON o.id = sr.opportunity_id
     LEFT JOIN suppliers     s ON s.id = sr.supplier_id
+    ${whereClause}
     GROUP BY sr.opportunity_id, o.title
     ORDER BY sourced_count DESC, sr.opportunity_id ASC
     LIMIT $1 OFFSET $2

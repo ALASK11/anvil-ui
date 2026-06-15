@@ -1,24 +1,12 @@
-import { Storage } from '@google-cloud/storage'
-
-// Single Storage client reused across requests. Uses Application Default
-// Credentials — the compute service account on Cloud Run, or your gcloud ADC
-// locally (see `gcloud auth application-default login`).
-let storage: Storage | null = null
-
-function getStorage(): Storage {
-  if (!storage) storage = new Storage()
-  return storage
-}
-
-// How long a generated signed URL stays valid.
-const SIGNED_URL_TTL_MS = 60 * 60 * 1000 // 1 hour
-
 /**
  * Parse a GCS reference into { bucket, object }. Accepts:
  *   - gs://bucket/path/to/object
  *   - https://storage.googleapis.com/bucket/path/to/object
  *   - https://storage.cloud.google.com/bucket/path/to/object
  *   - https://bucket.storage.googleapis.com/path/to/object
+ *
+ * Used by the /api/doc proxy route to translate a database-stored URL into
+ * a (bucket, object) pair for the Storage client.
  */
 export function parseGcsUrl(url: string | null): { bucket: string; object: string } | null {
   if (!url) return null
@@ -50,33 +38,4 @@ export function parseGcsUrl(url: string | null): { bucket: string; object: strin
   }
 
   return null
-}
-
-/**
- * Generate a V4 read-only signed URL for a GCS object so it can be opened
- * directly in the browser. Returns null (rather than throwing) on any failure,
- * so a single un-signable document never breaks page rendering.
- *
- * Signing requires an identity that can sign: a service account key, or — when
- * running on ADC without a private key — the IAM `signBlob` permission
- * (roles/iam.serviceAccountTokenCreator) on the active service account.
- */
-export async function signGcsUrl(gcsUrl: string | null): Promise<string | null> {
-  const parsed = parseGcsUrl(gcsUrl)
-  if (!parsed) return null
-
-  try {
-    const [signed] = await getStorage()
-      .bucket(parsed.bucket)
-      .file(parsed.object)
-      .getSignedUrl({
-        version: 'v4',
-        action: 'read',
-        expires: Date.now() + SIGNED_URL_TTL_MS,
-      })
-    return signed
-  } catch (err) {
-    console.error(`[gcs] failed to sign URL for ${gcsUrl}:`, err)
-    return null
-  }
 }

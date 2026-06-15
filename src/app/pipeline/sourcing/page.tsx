@@ -4,8 +4,10 @@ import {
   listSourcingResults,
   listGroupedSourcingResults,
 } from '@/lib/db/queries/sourcing'
-import { signGcsUrl } from '@/lib/gcs'
+import { listOpportunityDocuments, getOpportunity } from '@/lib/db/queries/opportunities'
+import { planetbidsLinks } from '@/lib/opportunity-links'
 import Pagination from '@/components/Pagination'
+import { DocumentsPanel } from './documents-panel'
 
 export const dynamic = 'force-dynamic'
 
@@ -62,15 +64,23 @@ export default async function SourcingPage({ searchParams }: PageProps) {
   const limit = 50
   const offset = pageIndex * limit
 
-  const [kpis, rawResults, rawGroupedResults] = await Promise.all([
+  const hasDocsRaw = params.has_documents
+  const hasDocsValue = Array.isArray(hasDocsRaw) ? hasDocsRaw[0] : hasDocsRaw
+  const hasDocuments = hasDocsValue === 'true' || hasDocsValue === '1'
+
+  const [kpis, rawResults, rawGroupedResults, oppDocuments, opp] = await Promise.all([
     opportunityId ? null : getSourcingKpis(),
     opportunityId
       ? listSourcingResults({ limit: limit + 1, offset, opportunityId })
       : [],
     opportunityId
       ? []
-      : listGroupedSourcingResults(limit + 1, offset),
+      : listGroupedSourcingResults({ limit: limit + 1, offset, hasDocuments }),
+    opportunityId ? listOpportunityDocuments(opportunityId) : [],
+    opportunityId ? getOpportunity(opportunityId) : null,
   ])
+
+  const pb = opp ? planetbidsLinks(opp) : null
 
   const hasNext = opportunityId
     ? rawResults.length > limit
@@ -78,24 +88,6 @@ export default async function SourcingPage({ searchParams }: PageProps) {
 
   const results = rawResults.slice(0, limit)
   const groupedResults = rawGroupedResults.slice(0, limit)
-
-  // Sign each unique document gcs_url once so the links open directly in the
-  // browser. Signing is deduped because every row of a single-opp view shares
-  // the same documents. Failures resolve to null and render as plain text.
-  const uniqueDocUrls = Array.from(
-    new Set(
-      results
-        .flatMap((r) => r.documents ?? [])
-        .map((d) => d.gcs_url)
-        .filter((u): u is string => !!u),
-    ),
-  )
-  const signedDocUrls = new Map<string, string | null>()
-  await Promise.all(
-    uniqueDocUrls.map(async (url) => {
-      signedDocUrls.set(url, await signGcsUrl(url))
-    }),
-  )
 
   const selectedRate =
     kpis && kpis.total_results > 0
@@ -127,11 +119,36 @@ export default async function SourcingPage({ searchParams }: PageProps) {
             Filtered to opportunity{' '}
             <code style={{ fontFamily: 'monospace' }}>{shortId(opportunityId)}</code>
           </span>
+          <Link href={`/rfp/${opportunityId}`} style={{ color: 'var(--accent)' }}>
+            view bid detail
+          </Link>
+          {pb && (
+            <a
+              href={pb.detail}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--accent)' }}
+            >
+              PlanetBids bid{pb.bidId ? ` #${pb.bidId}` : ''}
+            </a>
+          )}
+          {pb?.company && (
+            <a
+              href={pb.company}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--accent)' }}
+            >
+              PlanetBids company{pb.companyId ? ` #${pb.companyId}` : ''}
+            </a>
+          )}
           <Link href="/pipeline/sourcing" style={{ color: 'var(--accent)' }}>
             clear filter
           </Link>
         </div>
       )}
+
+      {opportunityId && <DocumentsPanel documents={oppDocuments} />}
 
       {kpis && (
         <div className="card-grid">
@@ -152,6 +169,41 @@ export default async function SourcingPage({ searchParams }: PageProps) {
             <div className="card-value">{selectedRate}%</div>
             <div className="card-sub">selected / total (all opps)</div>
           </div>
+        </div>
+      )}
+
+      {!opportunityId && (
+        <div
+          style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            padding: '0.75rem 1rem',
+            marginBottom: '1rem',
+            fontSize: '0.85rem',
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: '0.75rem',
+          }}
+        >
+          {hasDocuments ? (
+            <>
+              <span>Showing only opportunities with documents</span>
+              <Link href="/pipeline/sourcing" style={{ color: 'var(--accent)' }}>
+                show all
+              </Link>
+            </>
+          ) : (
+            <>
+              <span style={{ color: 'var(--text-muted)' }}>Filters:</span>
+              <Link
+                href="/pipeline/sourcing?has_documents=true"
+                style={{ color: 'var(--accent)' }}
+              >
+                only opportunities with documents
+              </Link>
+            </>
+          )}
         </div>
       )}
 
@@ -180,7 +232,6 @@ export default async function SourcingPage({ searchParams }: PageProps) {
                   <th>Product?</th>
                   <th>Rating Reason</th>
                   <th>Selected</th>
-                  <th>Documents</th>
                 </tr>
               </thead>
               <tbody>
@@ -217,43 +268,11 @@ export default async function SourcingPage({ searchParams }: PageProps) {
                     {/* TODO: wire to sourcing_results.rating_reason once the column exists. Placeholder for now. */}
                     <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: 280 }}>—</td>
                     <td>{r.is_selected ? <span className="badge badge-green">yes</span> : '—'}</td>
-                    <td style={{ fontSize: '0.85rem', maxWidth: 220 }}>
-                      {r.documents && r.documents.length > 0 ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                          {r.documents.map((doc, i) => {
-                            const signed = doc.gcs_url ? signedDocUrls.get(doc.gcs_url) : null
-                            return signed ? (
-                              <a
-                                key={i}
-                                href={signed}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={doc.filename ?? undefined}
-                                style={{
-                                  color: 'var(--accent)',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {doc.filename ?? 'document'}
-                              </a>
-                            ) : (
-                              <span key={i} title={doc.filename ?? ''} style={{ color: 'var(--text-muted)' }}>
-                                {doc.filename ?? '—'}
-                              </span>
-                            )
-                          })}
-                        </div>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
                   </tr>
                 ))}
                 {results.length === 0 && (
                   <tr>
-                    <td colSpan={17} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
+                    <td colSpan={16} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
                       No sourcing results for this opportunity yet.
                     </td>
                   </tr>

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { listOpportunities, getOpportunityKpis } from '@/lib/db/queries/opportunities'
 import type { OpportunityListRow } from '@/lib/db/types'
 import Pagination from '@/components/Pagination'
@@ -101,8 +102,16 @@ export default async function RFPPage(props: PageProps) {
           <tbody>
             {rows.map((r: OpportunityListRow) => (
               <tr key={r.id}>
-                <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{shortId(r.id)}</td>
-                <td style={{ fontWeight: 500 }}>{r.title ?? '—'}</td>
+                <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                  <Link href={`/rfp/${r.id}`} style={{ color: 'var(--accent)' }}>
+                    {shortId(r.id)}
+                  </Link>
+                </td>
+                <td style={{ fontWeight: 500 }}>
+                  <Link href={`/rfp/${r.id}`} style={{ color: 'var(--text)' }}>
+                    {r.title ?? '—'}
+                  </Link>
+                </td>
                 <td>{r.agency ?? '—'}</td>
                 <td>{formatDate(r.posted_date)}</td>
                 <td>{formatDate(r.response_deadline)}</td>
