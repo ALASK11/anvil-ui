@@ -8,6 +8,7 @@ export async function listOpportunities(limit = 100, offset = 0): Promise<Opport
     SELECT
       o.id,
       o.title,
+      o.source,
       o.agency,
       o.posted_date,
       o.response_deadline,
