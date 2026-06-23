@@ -89,12 +89,13 @@ export default async function RFPPage(props: PageProps) {
           <thead>
             <tr>
               <th>ID</th>
+              <th>Source</th>
               <th>Title</th>
               <th>Agency</th>
               <th>Posted</th>
               <th>Due</th>
               <th>CLINs</th>
-              <th>Sources</th>
+              <th>Sourcing</th>
               <th>Est. Value</th>
               <th>Stage</th>
             </tr>
@@ -107,6 +108,7 @@ export default async function RFPPage(props: PageProps) {
                     {shortId(r.id)}
                   </Link>
                 </td>
+                <td style={{ fontWeight: 500 }}>{r.source}</td>
                 <td style={{ fontWeight: 500 }}>
                   <Link href={`/rfp/${r.id}`} style={{ color: 'var(--text)' }}>
                     {r.title ?? '—'}
@@ -127,7 +129,7 @@ export default async function RFPPage(props: PageProps) {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
+                <td colSpan={10} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
                   No opportunities found.
                 </td>
               </tr>
