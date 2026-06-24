@@ -37,6 +37,8 @@ export interface ClinItemRow {
   brand_required: boolean | null
   is_service_clin: boolean | null
   sourcing_status: string | null
+  opp_is_product: boolean | null
+  opp_commentary: string | null
 }
 
 export async function listClinItems(limit = 50, offset = 0): Promise<ClinItemRow[]> {
@@ -46,7 +48,7 @@ export async function listClinItems(limit = 50, offset = 0): Promise<ClinItemRow
     SELECT
       ci.id,
       ci.opportunity_id,
-      o.title AS opp_title,
+      o.title        AS opp_title,
       ci.clin_number,
       ci.product_name,
       ci.description,
@@ -54,7 +56,9 @@ export async function listClinItems(limit = 50, offset = 0): Promise<ClinItemRow
       ci.unit,
       ci.brand_required,
       ci.is_service_clin,
-      ci.sourcing_status
+      ci.sourcing_status,
+      o.is_product   AS opp_is_product,
+      o.commentary   AS opp_commentary
     FROM clin_items ci
     LEFT JOIN opportunities o ON o.id = ci.opportunity_id
     ORDER BY ci.created_at DESC NULLS LAST

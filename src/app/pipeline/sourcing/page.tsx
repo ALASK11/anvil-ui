@@ -1,12 +1,27 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import {
   getSourcingKpis,
   listSourcingResults,
   listGroupedSourcingResults,
+  countGroupedSourcingOpps,
+  type SourcingResultRow,
 } from '@/lib/db/queries/sourcing'
-import { listOpportunityDocuments, getOpportunity } from '@/lib/db/queries/opportunities'
+import {
+  listOpportunityDocuments,
+  getOpportunity,
+  getOpportunityParsedJson,
+  listClinItemsForOpportunity,
+  listHumanClinItemsForOpportunity,
+  type OpportunityClinRow,
+  type HumanClinItemRow,
+} from '@/lib/db/queries/opportunities'
 import { planetbidsLinks } from '@/lib/opportunity-links'
 import Pagination from '@/components/Pagination'
+import { OpportunityLabels } from '@/components/OpportunityLabels'
+import { ParsedJsonPanel } from '@/components/ParsedJsonPanel'
+import { TruepricesTester } from '@/components/TruepricesTester'
+import { PdfParseTool } from '@/components/PdfParseTool'
 import { DocumentsPanel } from './documents-panel'
 
 export const dynamic = 'force-dynamic'
@@ -25,18 +40,6 @@ function formatCents(cents: number | null) {
   return `$${(cents / 100).toFixed(2)}`
 }
 
-function formatMarginRange(min: number | null, max: number | null) {
-  if (min == null || max == null) return '—'
-  if (min === max) return `${min.toFixed(1)}%`
-  return `${min.toFixed(1)}% – ${max.toFixed(1)}%`
-}
-
-function formatCostRange(min: number | null, max: number | null) {
-  if (min == null || max == null) return '—'
-  if (min === max) return formatCents(min)
-  return `${formatCents(min)} – ${formatCents(max)}`
-}
-
 function confidenceBadge(c: string | null) {
   const map: Record<string, string> = {
     high: 'badge-green',
@@ -48,6 +51,199 @@ function confidenceBadge(c: string | null) {
 
 function isHttpUrl(url: string | null): url is string {
   return !!url && /^https?:\/\//i.test(url)
+}
+
+function ClinResultsTable({ results }: { results: SourcingResultRow[] }) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>Supplier</th>
+          <th>Retailer</th>
+          <th>Product</th>
+          <th>SKU</th>
+          <th>Unit</th>
+          <th>Landed</th>
+          <th>Bid Reco</th>
+          <th>Margin</th>
+          <th>Lead</th>
+          <th>Conf.</th>
+          <th>Selected</th>
+        </tr>
+      </thead>
+      <tbody>
+        {results.map((r) => (
+          <tr key={r.id}>
+            <td style={{ fontWeight: 500 }}>{r.supplier_name ?? '—'}</td>
+            <td>{r.retailer_name ?? '—'}</td>
+            <td>
+              {isHttpUrl(r.product_url) ? (
+                <a
+                  href={r.product_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  {r.product_name ?? 'view'}
+                </a>
+              ) : (
+                r.product_name ?? '—'
+              )}
+            </td>
+            <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{r.sku ?? '—'}</td>
+            <td>{formatCents(r.unit_price_cents)}</td>
+            <td>{formatCents(r.total_landed_cost_cents)}</td>
+            <td>{formatCents(r.bid_price_recommended_cents)}</td>
+            <td>{r.margin_pct == null ? '—' : `${r.margin_pct.toFixed(1)}%`}</td>
+            <td>{r.lead_time_days == null ? '—' : `${r.lead_time_days}d`}</td>
+            <td>
+              <span className={confidenceBadge(r.confidence)}>{r.confidence ?? '—'}</span>
+            </td>
+            <td>{r.is_selected ? <span className="badge badge-green">yes</span> : '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function HumanClinSection({ clin }: { clin: HumanClinItemRow }) {
+  const labeledAt = clin.labeled_at
+    ? new Date(clin.labeled_at).toISOString().slice(0, 10)
+    : null
+  return (
+    <div className="table-container" style={{ marginBottom: '1rem' }}>
+      <div
+        className="table-header"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: '1rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <strong>CLIN {clin.clin_number ?? '(unnumbered)'}</strong>
+          {clin.product_name && <span style={{ fontWeight: 400 }}>· {clin.product_name}</span>}
+          {clin.product_category && (
+            <span className="badge badge-muted" style={{ fontSize: '0.7rem', textTransform: 'lowercase' }}>
+              {clin.product_category}
+            </span>
+          )}
+          {clin.is_service_clin && (
+            <span className="badge badge-yellow" style={{ fontSize: '0.7rem' }}>
+              service
+            </span>
+          )}
+          {clin.brand_required && (
+            <span className="badge badge-red" style={{ fontSize: '0.7rem' }}>
+              brand required
+            </span>
+          )}
+        </span>
+        {clin.quantity != null && (
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+            {clin.quantity.toLocaleString()}
+            {clin.unit ? ` ${clin.unit}` : ''}
+          </span>
+        )}
+      </div>
+      <div style={{ padding: '0.65rem 0.85rem', fontSize: '0.85rem' }}>
+        {clin.description && (
+          <div style={{ color: 'var(--text-muted)', marginBottom: '0.4rem' }}>{clin.description}</div>
+        )}
+        {clin.specs && (
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{clin.specs}</div>
+        )}
+        <div
+          style={{
+            marginTop: '0.5rem',
+            fontSize: '0.75rem',
+            color: 'var(--text-muted)',
+            borderTop: '1px solid var(--border)',
+            paddingTop: '0.4rem',
+          }}
+        >
+          labeled by {clin.labeled_by ?? 'unknown'}
+          {labeledAt ? ` on ${labeledAt}` : ''}
+          {clin.note ? ` — ${clin.note}` : ''}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const groupHeaderStyle: CSSProperties = {
+  background: 'var(--bg-card)',
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+  marginBottom: '1rem',
+}
+
+const groupSummaryStyle: CSSProperties = {
+  padding: '0.6rem 0.85rem',
+  fontSize: '0.9rem',
+  fontWeight: 600,
+  cursor: 'pointer',
+  userSelect: 'none',
+  listStyle: 'none',
+}
+
+function ClinSection({
+  clin,
+  results,
+}: {
+  clin: OpportunityClinRow
+  results: SourcingResultRow[]
+}) {
+  return (
+    <div className="table-container" style={{ marginBottom: '1.25rem' }}>
+      <div
+        className="table-header"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: '1rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <strong>CLIN {clin.clin_number ?? '(unnumbered)'}</strong>
+          {clin.product_name && (
+            <span style={{ fontWeight: 400 }}>· {clin.product_name}</span>
+          )}
+          {clin.product_category && (
+            <span
+              className="badge badge-muted"
+              style={{ fontSize: '0.7rem', textTransform: 'lowercase' }}
+            >
+              {clin.product_category}
+            </span>
+          )}
+          {clin.is_service_clin && (
+            <span className="badge badge-yellow" style={{ fontSize: '0.7rem' }}>
+              service
+            </span>
+          )}
+        </span>
+        {clin.quantity != null && (
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+            {clin.quantity.toLocaleString()}
+            {clin.unit ? ` ${clin.unit}` : ''}
+          </span>
+        )}
+      </div>
+      {results.length === 0 ? (
+        <div style={{ padding: '0.9rem 1.25rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          No sourcing results for this CLIN yet.
+        </div>
+      ) : (
+        <ClinResultsTable results={results} />
+      )}
+    </div>
+  )
 }
 
 interface PageProps {
@@ -64,30 +260,62 @@ export default async function SourcingPage({ searchParams }: PageProps) {
   const limit = 50
   const offset = pageIndex * limit
 
-  const hasDocsRaw = params.has_documents
-  const hasDocsValue = Array.isArray(hasDocsRaw) ? hasDocsRaw[0] : hasDocsRaw
-  const hasDocuments = hasDocsValue === 'true' || hasDocsValue === '1'
+  const flag = (key: string): boolean => {
+    const v = params[key]
+    const value = Array.isArray(v) ? v[0] : v
+    return value === 'true' || value === '1'
+  }
+  const hasDocuments = flag('has_documents')
+  const activeOnly = flag('active')
 
-  const [kpis, rawResults, rawGroupedResults, oppDocuments, opp] = await Promise.all([
+  const filtersActive = !opportunityId && (hasDocuments || activeOnly)
+
+  const [
+    kpis,
+    rawResults,
+    rawGroupedResults,
+    oppDocuments,
+    opp,
+    filteredCount,
+    parsedJson,
+    clinItems,
+    humanClinItems,
+  ] = await Promise.all([
     opportunityId ? null : getSourcingKpis(),
-    opportunityId
-      ? listSourcingResults({ limit: limit + 1, offset, opportunityId })
-      : [],
+    opportunityId ? listSourcingResults({ opportunityId }) : [],
     opportunityId
       ? []
-      : listGroupedSourcingResults({ limit: limit + 1, offset, hasDocuments }),
+      : listGroupedSourcingResults({ limit: limit + 1, offset, hasDocuments, activeOnly }),
     opportunityId ? listOpportunityDocuments(opportunityId) : [],
     opportunityId ? getOpportunity(opportunityId) : null,
+    filtersActive ? countGroupedSourcingOpps({ hasDocuments, activeOnly }) : null,
+    opportunityId ? getOpportunityParsedJson(opportunityId) : null,
+    opportunityId ? listClinItemsForOpportunity(opportunityId) : [],
+    opportunityId ? listHumanClinItemsForOpportunity(opportunityId) : [],
   ])
+
+  function filterUrl(next: { hasDocuments: boolean; activeOnly: boolean }): string {
+    const sp = new URLSearchParams()
+    if (next.hasDocuments) sp.set('has_documents', 'true')
+    if (next.activeOnly) sp.set('active', 'true')
+    const q = sp.toString()
+    return q ? `/pipeline/sourcing?${q}` : '/pipeline/sourcing'
+  }
 
   const pb = opp ? planetbidsLinks(opp) : null
 
-  const hasNext = opportunityId
-    ? rawResults.length > limit
-    : rawGroupedResults.length > limit
-
-  const results = rawResults.slice(0, limit)
+  const hasNext = opportunityId ? false : rawGroupedResults.length > limit
   const groupedResults = rawGroupedResults.slice(0, limit)
+
+  // Group sourcing results by clin_item_id; null key = opp-level / orphan results.
+  const resultsByClin = new Map<string | null, SourcingResultRow[]>()
+  for (const r of rawResults) {
+    const key = r.clin_item_id ?? null
+    const bucket = resultsByClin.get(key)
+    if (bucket) bucket.push(r)
+    else resultsByClin.set(key, [r])
+  }
+  const orphanResults = resultsByClin.get(null) ?? []
 
   const selectedRate =
     kpis && kpis.total_results > 0
@@ -113,6 +341,7 @@ export default async function SourcingPage({ searchParams }: PageProps) {
             display: 'flex',
             alignItems: 'baseline',
             gap: '0.75rem',
+            flexWrap: 'wrap',
           }}
         >
           <span>
@@ -148,7 +377,35 @@ export default async function SourcingPage({ searchParams }: PageProps) {
         </div>
       )}
 
+      {opportunityId && opp && (
+        <OpportunityLabels
+          opportunityId={opportunityId}
+          initialIsProduct={opp.is_product}
+          initialCommentary={opp.commentary}
+        />
+      )}
+
+      {opportunityId && (
+        <div style={{ marginBottom: '1rem' }}>
+          <TruepricesTester defaultQuery={opp?.title ?? null} />
+        </div>
+      )}
+
+      {opportunityId && parsedJson && (
+        <ParsedJsonPanel
+          data={parsedJson}
+          title={`Parsed JSON — ${parsedJson.clin_items.length} CLIN item${parsedJson.clin_items.length === 1 ? '' : 's'}`}
+        />
+      )}
+
       {opportunityId && <DocumentsPanel documents={oppDocuments} />}
+
+      {opportunityId && (
+        <PdfParseTool
+          opportunityId={opportunityId}
+          documents={oppDocuments.map((d) => ({ id: d.id, filename: d.filename }))}
+        />
+      )}
 
       {kpis && (
         <div className="card-grid">
@@ -173,180 +430,153 @@ export default async function SourcingPage({ searchParams }: PageProps) {
       )}
 
       {!opportunityId && (
-        <div
-          style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            padding: '0.75rem 1rem',
-            marginBottom: '1rem',
-            fontSize: '0.85rem',
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: '0.75rem',
-          }}
-        >
-          {hasDocuments ? (
-            <>
-              <span>Showing only opportunities with documents</span>
-              <Link href="/pipeline/sourcing" style={{ color: 'var(--accent)' }}>
-                show all
-              </Link>
-            </>
-          ) : (
-            <>
-              <span style={{ color: 'var(--text-muted)' }}>Filters:</span>
-              <Link
-                href="/pipeline/sourcing?has_documents=true"
-                style={{ color: 'var(--accent)' }}
-              >
-                only opportunities with documents
-              </Link>
-            </>
+        <div className="filter-bar">
+          <span className="filter-bar-label">Filters</span>
+          <Link
+            href={filterUrl({ hasDocuments: !hasDocuments, activeOnly })}
+            className={`filter-chip${hasDocuments ? ' active' : ''}`}
+          >
+            <span className="filter-chip-dot" />
+            Has documents
+          </Link>
+          <Link
+            href={filterUrl({ hasDocuments, activeOnly: !activeOnly })}
+            className={`filter-chip${activeOnly ? ' active' : ''}`}
+          >
+            <span className="filter-chip-dot" />
+            Active only
+          </Link>
+          {filteredCount != null && (
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              {filteredCount.toLocaleString()} opp{filteredCount === 1 ? '' : 's'} match
+            </span>
+          )}
+          {(hasDocuments || activeOnly) && (
+            <Link href="/pipeline/sourcing" className="filter-bar-clear">
+              clear filters
+            </Link>
           )}
         </div>
       )}
 
-      <div className="table-container">
-        <div className="table-header">
-          {opportunityId ? `Sourcing Details — ${shortId(opportunityId)}` : 'Sourcing Opportunities Summary'}
-        </div>
-        <table>
-          {opportunityId ? (
-            <>
-              <thead>
-                <tr>
-                  <th>Opp</th>
-                  <th>Opp Title</th>
-                  <th>Bid Due</th>
-                  <th>Supplier</th>
-                  <th>Retailer</th>
-                  <th>Product</th>
-                  <th>SKU</th>
-                  <th>Unit</th>
-                  <th>Landed</th>
-                  <th>Bid Reco</th>
-                  <th>Margin</th>
-                  <th>Lead</th>
-                  <th>Conf.</th>
-                  <th>Product?</th>
-                  <th>Rating Reason</th>
-                  <th>Selected</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r) => (
-                  <tr key={r.id}>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{shortId(r.opportunity_id)}</td>
-                    <td>{r.opp_title ?? '—'}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.response_deadline)}</td>
-                    <td style={{ fontWeight: 500 }}>{r.supplier_name ?? '—'}</td>
-                    <td>{r.retailer_name ?? '—'}</td>
-                    <td>
-                      {isHttpUrl(r.product_url) ? (
-                        <a
-                          href={r.product_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: 'var(--accent)' }}
-                        >
-                          {r.product_name ?? 'view'}
-                        </a>
-                      ) : (
-                        r.product_name ?? '—'
-                      )}
-                    </td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{r.sku ?? '—'}</td>
-                    <td>{formatCents(r.unit_price_cents)}</td>
-                    <td>{formatCents(r.total_landed_cost_cents)}</td>
-                    <td>{formatCents(r.bid_price_recommended_cents)}</td>
-                    <td>{r.margin_pct == null ? '—' : `${r.margin_pct.toFixed(1)}%`}</td>
-                    <td>{r.lead_time_days == null ? '—' : `${r.lead_time_days}d`}</td>
-                    <td><span className={confidenceBadge(r.confidence)}>{r.confidence ?? '—'}</span></td>
-                    {/* TODO: wire to sourcing_results.is_product once the column exists (see SourcingResultRow). Placeholder for now. */}
-                    <td>—</td>
-                    {/* TODO: wire to sourcing_results.rating_reason once the column exists. Placeholder for now. */}
-                    <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: 280 }}>—</td>
-                    <td>{r.is_selected ? <span className="badge badge-green">yes</span> : '—'}</td>
-                  </tr>
-                ))}
-                {results.length === 0 && (
-                  <tr>
-                    <td colSpan={16} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
-                      No sourcing results for this opportunity yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </>
-          ) : (
-            <>
-              <thead>
-                <tr>
-                  <th>Opp ID</th>
-                  <th>Opportunity Title</th>
-                  <th style={{ textAlign: 'center' }}>Sourced Count</th>
-                  <th>Suppliers</th>
-                  <th>Margin Range</th>
-                  <th>Landed Cost Range</th>
-                  <th style={{ textAlign: 'center' }}>Selected?</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groupedResults.map((r) => (
-                  <tr key={r.opportunity_id}>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{shortId(r.opportunity_id)}</td>
-                    <td style={{ fontWeight: 500 }}>{r.opp_title ?? '—'}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span className="badge badge-blue" style={{ fontSize: '0.85rem', padding: '0.25rem 0.6rem', fontWeight: 600 }}>
-                        {r.sourced_count}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.suppliers || ''}>
-                      {r.suppliers}
-                    </td>
-                    <td>{formatMarginRange(r.min_margin_pct, r.max_margin_pct)}</td>
-                    <td>{formatCostRange(r.min_landed_cost_cents, r.max_landed_cost_cents)}</td>
-                    <td style={{ textAlign: 'center' }}>
-                      {r.any_selected ? <span className="badge badge-green">yes</span> : '—'}
-                    </td>
-                    <td>
-                      <Link
-                        href={`/pipeline/sourcing?opportunity_id=${r.opportunity_id}`}
-                        className="pagination-btn"
-                        style={{
-                          padding: '0.25rem 0.6rem',
-                          fontSize: '0.75rem',
-                          background: 'var(--accent)',
-                          borderColor: 'var(--accent)',
-                          color: '#fff',
-                        }}
-                      >
-                        View Details
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-                {groupedResults.length === 0 && (
-                  <tr>
-                    <td colSpan={8} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
-                      No sourcing opportunities found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </>
-          )}
-        </table>
-      </div>
+      {opportunityId ? (
+        <>
+          {clinItems.length === 0 &&
+            humanClinItems.length === 0 &&
+            orphanResults.length === 0 && (
+              <div className="table-container">
+                <div className="table-header">Sourcing Results</div>
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  No sourcing results for this opportunity yet.
+                </div>
+              </div>
+            )}
 
-      <Pagination
-        currentIndex={pageIndex}
-        hasNext={hasNext}
-        limit={limit}
-        searchParams={params}
-      />
+          {clinItems.length > 0 && (
+            <details open style={groupHeaderStyle}>
+              <summary style={groupSummaryStyle}>
+                Machine-parsed CLINs ({clinItems.length})
+              </summary>
+              <div style={{ padding: '0 0.85rem 0.5rem' }}>
+                {clinItems.map((clin) => (
+                  <ClinSection
+                    key={clin.id}
+                    clin={clin}
+                    results={resultsByClin.get(clin.id) ?? []}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
+
+          {humanClinItems.length > 0 && (
+            <details open style={groupHeaderStyle}>
+              <summary style={groupSummaryStyle}>
+                Human-reviewed CLINs ({humanClinItems.length})
+              </summary>
+              <div style={{ padding: '0 0.85rem 0.5rem' }}>
+                {humanClinItems.map((clin) => (
+                  <HumanClinSection key={clin.id} clin={clin} />
+                ))}
+              </div>
+            </details>
+          )}
+
+          {orphanResults.length > 0 && (
+            <div className="table-container" style={{ marginBottom: '1.25rem' }}>
+              <div className="table-header">
+                {clinItems.length === 0 && humanClinItems.length === 0
+                  ? 'Sourcing Results (opportunity-level)'
+                  : `Other results — ${orphanResults.length} not linked to a CLIN`}
+              </div>
+              <ClinResultsTable results={orphanResults} />
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="table-container">
+          <div className="table-header">Sourcing Opportunities Summary</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Opp ID</th>
+                <th>Opportunity Title</th>
+                <th>Bid Due</th>
+                <th style={{ textAlign: 'center' }}>Sourced Count</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupedResults.map((r) => (
+                <tr key={r.opportunity_id}>
+                  <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{shortId(r.opportunity_id)}</td>
+                  <td style={{ fontWeight: 500 }}>{r.opp_title ?? '—'}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{formatDate(r.response_deadline)}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span
+                      className="badge badge-blue"
+                      style={{ fontSize: '0.85rem', padding: '0.25rem 0.6rem', fontWeight: 600 }}
+                    >
+                      {r.sourced_count}
+                    </span>
+                  </td>
+                  <td>
+                    <Link
+                      href={`/pipeline/sourcing?opportunity_id=${r.opportunity_id}`}
+                      className="pagination-btn"
+                      style={{
+                        padding: '0.25rem 0.6rem',
+                        fontSize: '0.75rem',
+                        background: 'var(--accent)',
+                        borderColor: 'var(--accent)',
+                        color: '#fff',
+                      }}
+                    >
+                      View Details
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+              {groupedResults.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
+                    No sourcing opportunities found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!opportunityId && (
+        <Pagination
+          currentIndex={pageIndex}
+          hasNext={hasNext}
+          limit={limit}
+          searchParams={params}
+        />
+      )}
     </>
   )
 }

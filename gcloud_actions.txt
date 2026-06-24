@@ -29,3 +29,136 @@ gcloud projects add-iam-policy-binding anvil-private --member="serviceAccount:16
 # Authenticate Docker with Artifact Registry so you can push images.
 
 gcloud auth configure-docker us-central1-docker.pkg.dev
+
+# ============================================================
+# Cloud SQL — IAM Database Authentication
+# ============================================================
+# Enable IAM auth on the Cloud SQL instance so the Cloud Run SA can
+# authenticate to Postgres without a password. Triggers an instance
+# restart. WARNING: --database-flags REPLACES the full flag set; if
+# other flags exist, list them all here too. Verify first with:
+#   gcloud sql instances describe anvil-intelligence-db \
+#     --project=anvil-private \
+#     --format="value(settings.databaseFlags)"
+
+gcloud sql instances patch anvil-intelligence-db \
+  --project=anvil-private \
+  --database-flags=cloudsql.iam_authentication=on
+
+# Project-level roles for the Next.js Cloud Run SA.
+# - cloudsql.client       → establish the TLS tunnel
+# - cloudsql.instanceUser → IAM-based Postgres login
+
+gcloud projects add-iam-policy-binding anvil-private \
+  --member="serviceAccount:169801273048-compute@developer.gserviceaccount.com" \
+  --role="roles/cloudsql.client"
+
+gcloud projects add-iam-policy-binding anvil-private \
+  --member="serviceAccount:169801273048-compute@developer.gserviceaccount.com" \
+  --role="roles/cloudsql.instanceUser"
+
+# Create the IAM Postgres user. Pass the SA email WITHOUT the
+# .gserviceaccount.com suffix — Cloud SQL drops it to fit Postgres's
+# 63-char identifier limit (so the actual Postgres role becomes
+# "169801273048-compute@developer").
+
+gcloud sql users create 169801273048-compute@developer \
+  --instance=anvil-intelligence-db \
+  --project=anvil-private \
+  --type=cloud_iam_service_account
+
+# ============================================================
+# Postgres grants (run inside `gcloud sql connect` as postgres)
+# ============================================================
+# gcloud sql connect anvil-intelligence-db \
+#   --project=anvil-private --user=postgres --database=govcon
+#
+# Then run the SQL:
+#
+#   GRANT CONNECT ON DATABASE govcon TO "169801273048-compute@developer";
+#   GRANT USAGE   ON SCHEMA public  TO "169801273048-compute@developer";
+#   GRANT SELECT  ON ALL TABLES    IN SCHEMA public TO "169801273048-compute@developer";
+#   GRANT SELECT  ON ALL SEQUENCES IN SCHEMA public TO "169801273048-compute@developer";
+#
+#   -- Future tables created by the pipeline writer (anvil_app):
+#   ALTER DEFAULT PRIVILEGES FOR ROLE anvil_app IN SCHEMA public
+#     GRANT SELECT ON TABLES    TO "169801273048-compute@developer";
+#   ALTER DEFAULT PRIVILEGES FOR ROLE anvil_app IN SCHEMA public
+#     GRANT SELECT ON SEQUENCES TO "169801273048-compute@developer";
+#
+#   -- UI-driven human-label columns on opportunities (in-line label editing):
+#   GRANT UPDATE (is_product, commentary, updated_at) ON opportunities
+#     TO "169801273048-compute@developer";
+#
+#   -- Human-review shadow tables (CLIN approval form + future manual sourcing).
+#   -- Append-only — no UPDATE or DELETE grants; pipeline code never reads these.
+#   GRANT INSERT ON clin_items_human       TO "169801273048-compute@developer";
+#   GRANT INSERT ON sourcing_results_human TO "169801273048-compute@developer";
+#   -- SELECT may already be covered by `ALTER DEFAULT PRIVILEGES FOR ROLE
+#   -- <table-owner>` if alembic ran as the right role. Verify with:
+#   --   \dp public.clin_items_human
+#   -- and grant explicitly if missing:
+#   --   GRANT SELECT ON clin_items_human       TO "169801273048-compute@developer";
+#   --   GRANT SELECT ON sourcing_results_human TO "169801273048-compute@developer";
+
+# ============================================================
+# Cross-service IAM — Next.js → anvil-sourcing
+# ============================================================
+# Lets the Next.js SA call the anvil-sourcing Cloud Run service via
+# OIDC ID-token auth (the /api/source route's google-auth-library path).
+
+gcloud run services add-iam-policy-binding anvil-sourcing \
+  --region=us-central1 \
+  --project=anvil-private \
+  --member="serviceAccount:169801273048-compute@developer.gserviceaccount.com" \
+  --role="roles/run.invoker"
+
+# ============================================================
+# Cloud Run env vars (private-nextjs-site)
+# ============================================================
+# Use --update-env-vars (merges) not --set-env-vars (replaces) so each
+# command preserves the others. Replace <…> with real values.
+
+gcloud run services update private-nextjs-site \
+  --region=us-central1 \
+  --project=anvil-private \
+  --update-env-vars=INSTANCE_CONNECTION_NAME=anvil-private:us-central1:anvil-intelligence-db,DB_NAME=govcon,DB_USER=169801273048-compute@developer
+
+gcloud run services update private-nextjs-site \
+  --region=us-central1 \
+  --project=anvil-private \
+  --update-env-vars=SOURCING_FUNCTION_URL=https://anvil-sourcing-169801273048.us-central1.run.app
+
+gcloud run services update private-nextjs-site \
+  --region=us-central1 \
+  --project=anvil-private \
+  --update-env-vars=TRUEPRICES_API_KEY=<trueprices_prod_key>
+
+gcloud run services update private-nextjs-site \
+  --region=us-central1 \
+  --project=anvil-private \
+  --update-env-vars=GEMINI_API_KEY=<gemini_api_key>
+
+# Optional override — default model is gemini-2.5-flash. Set this to
+# gemini-2.5-pro for higher-quality (but slower / more expensive) parsing.
+# gcloud run services update private-nextjs-site \
+#   --region=us-central1 --project=anvil-private \
+#   --update-env-vars=GEMINI_MODEL=gemini-2.5-pro
+
+# Verify all env vars at once:
+# gcloud run services describe private-nextjs-site \
+#   --region=us-central1 --project=anvil-private \
+#   --format="value(spec.template.spec.containers[0].env)"
+
+# ============================================================
+# Cloud Run resource sizing (private-nextjs-site)
+# ============================================================
+# PDF parsing via Gemini needs more memory than the default 512 MiB.
+# 5 GiB requires ≥ 2 vCPU per Cloud Run's memory/CPU pairing rules.
+
+gcloud run services update private-nextjs-site \
+  --region=us-central1 \
+  --project=anvil-private \
+  --memory=5Gi \
+  --cpu=2
+

@@ -29,6 +29,7 @@ export async function getSourcingKpis(): Promise<SourcingKpis> {
 export interface SourcingResultRow {
   id: string
   opportunity_id: string
+  clin_item_id: string | null
   opp_title: string | null
   response_deadline: Date | null
   supplier_name: string | null
@@ -52,6 +53,7 @@ const SOURCING_RESULTS_SELECT = `
   SELECT
     sr.id,
     sr.opportunity_id,
+    sr.clin_item_id,
     o.title AS opp_title,
     o.response_deadline,
     s.name  AS supplier_name,
@@ -87,12 +89,13 @@ export async function listSourcingResults(
   const pool = await getPool()
 
   if (opportunityId) {
+    // Per-opp views render grouped by CLIN, so we want every candidate;
+    // pagination doesn't make sense here.
     const { rows } = await pool.query<SourcingResultRow>(
       `${SOURCING_RESULTS_SELECT}
        WHERE sr.opportunity_id = $1
-       ORDER BY sr.sourced_at DESC NULLS LAST
-       LIMIT $2 OFFSET $3`,
-      [opportunityId, limit, offset],
+       ORDER BY sr.sourced_at DESC NULLS LAST`,
+      [opportunityId],
     )
     return rows
   }
@@ -109,57 +112,68 @@ export async function listSourcingResults(
 export interface GroupedSourcingRow {
   opportunity_id: string
   opp_title: string | null
+  response_deadline: Date | null
   sourced_count: number
-  suppliers: string | null
-  retailers: string | null
-  min_landed_cost_cents: number | null
-  max_landed_cost_cents: number | null
-  min_margin_pct: number | null
-  max_margin_pct: number | null
-  any_selected: boolean | null
-  confidences: string | null
 }
 
 export interface ListGroupedSourcingResultsOptions {
   limit?: number
   offset?: number
   hasDocuments?: boolean
+  activeOnly?: boolean
+}
+
+function groupedSourcingWhere(hasDocuments: boolean, activeOnly: boolean): string {
+  const conditions: string[] = []
+  if (hasDocuments) {
+    conditions.push(`EXISTS (
+      SELECT 1 FROM opportunity_documents d
+      WHERE d.opportunity_id = sr.opportunity_id
+        AND d.recalled_at IS NULL
+        AND d.superseded_by IS NULL
+    )`)
+  }
+  if (activeOnly) {
+    conditions.push(`o.status = 'active'`)
+  }
+  return conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+}
+
+export async function countGroupedSourcingOpps(
+  options: Pick<ListGroupedSourcingResultsOptions, 'hasDocuments' | 'activeOnly'> = {},
+): Promise<number> {
+  const { hasDocuments = false, activeOnly = false } = options
+  const pool = await getPool()
+  const whereClause = groupedSourcingWhere(hasDocuments, activeOnly)
+  const { rows } = await pool.query<{ count: number }>(
+    `
+    SELECT COUNT(DISTINCT sr.opportunity_id)::int AS count
+    FROM sourcing_results sr
+    LEFT JOIN opportunities o ON o.id = sr.opportunity_id
+    ${whereClause}
+    `,
+  )
+  return rows[0]?.count ?? 0
 }
 
 export async function listGroupedSourcingResults(
   options: ListGroupedSourcingResultsOptions = {},
 ): Promise<GroupedSourcingRow[]> {
-  const { limit = 50, offset = 0, hasDocuments = false } = options
+  const { limit = 50, offset = 0, hasDocuments = false, activeOnly = false } = options
   const pool = await getPool()
-
-  const whereClause = hasDocuments
-    ? `WHERE EXISTS (
-         SELECT 1 FROM opportunity_documents d
-         WHERE d.opportunity_id = sr.opportunity_id
-           AND d.recalled_at IS NULL
-           AND d.superseded_by IS NULL
-       )`
-    : ''
+  const whereClause = groupedSourcingWhere(hasDocuments, activeOnly)
 
   const { rows } = await pool.query<GroupedSourcingRow>(
     `
     SELECT
       sr.opportunity_id,
-      o.title AS opp_title,
-      COUNT(sr.id)::int AS sourced_count,
-      COALESCE(ARRAY_TO_STRING(ARRAY_AGG(DISTINCT s.name), ', '), '—') AS suppliers,
-      COALESCE(ARRAY_TO_STRING(ARRAY_AGG(DISTINCT sr.retailer_name), ', '), '—') AS retailers,
-      MIN(sr.total_landed_cost_cents)::int AS min_landed_cost_cents,
-      MAX(sr.total_landed_cost_cents)::int AS max_landed_cost_cents,
-      MIN(sr.margin_pct)::float AS min_margin_pct,
-      MAX(sr.margin_pct)::float AS max_margin_pct,
-      BOOL_OR(sr.is_selected) AS any_selected,
-      COALESCE(ARRAY_TO_STRING(ARRAY_AGG(DISTINCT sr.confidence), ', '), '—') AS confidences
+      o.title             AS opp_title,
+      o.response_deadline,
+      COUNT(sr.id)::int   AS sourced_count
     FROM sourcing_results sr
     LEFT JOIN opportunities o ON o.id = sr.opportunity_id
-    LEFT JOIN suppliers     s ON s.id = sr.supplier_id
     ${whereClause}
-    GROUP BY sr.opportunity_id, o.title
+    GROUP BY sr.opportunity_id, o.title, o.response_deadline
     ORDER BY sourced_count DESC, sr.opportunity_id ASC
     LIMIT $1 OFFSET $2
     `,

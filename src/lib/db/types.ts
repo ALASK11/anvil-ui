@@ -7,6 +7,7 @@ export interface OpportunityListRow {
   estimated_value_max: number | null
   stage: string | null
   status: string | null
+  is_starred: boolean | null
   product_count: number
   bid_count: number
 }

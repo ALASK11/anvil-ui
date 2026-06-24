@@ -1,7 +1,13 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getOpportunity, listOpportunityDocuments } from '@/lib/db/queries/opportunities'
+import {
+  getOpportunity,
+  listOpportunityDocuments,
+  getOpportunityParsedJson,
+} from '@/lib/db/queries/opportunities'
 import { planetbidsLinks } from '@/lib/opportunity-links'
+import { OpportunityLabels } from '@/components/OpportunityLabels'
+import { ParsedJsonPanel } from '@/components/ParsedJsonPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,9 +35,10 @@ interface PageProps {
 
 export default async function BidDetailPage({ params }: PageProps) {
   const { id } = await params
-  const [opp, docs] = await Promise.all([
+  const [opp, docs, parsedJson] = await Promise.all([
     getOpportunity(id),
     listOpportunityDocuments(id),
+    getOpportunityParsedJson(id),
   ])
 
   if (!opp) notFound()
@@ -81,6 +88,19 @@ export default async function BidDetailPage({ params }: PageProps) {
           </p>
         )}
       </div>
+
+      <OpportunityLabels
+        opportunityId={opp.id}
+        initialIsProduct={opp.is_product}
+        initialCommentary={opp.commentary}
+      />
+
+      {parsedJson && (
+        <ParsedJsonPanel
+          data={parsedJson}
+          title={`Parsed JSON — ${parsedJson.clin_items.length} CLIN item${parsedJson.clin_items.length === 1 ? '' : 's'}`}
+        />
+      )}
 
       <div className="card-grid">
         <div className="card">

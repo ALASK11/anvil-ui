@@ -1,5 +1,9 @@
 import Link from 'next/link'
-import { listOpportunities, getOpportunityKpis } from '@/lib/db/queries/opportunities'
+import {
+  listOpportunities,
+  getOpportunityKpis,
+  countOpportunities,
+} from '@/lib/db/queries/opportunities'
 import type { OpportunityListRow } from '@/lib/db/types'
 import Pagination from '@/components/Pagination'
 
@@ -49,13 +53,39 @@ export default async function RFPPage(props: PageProps) {
   const limit = 100
   const offset = pageIndex * limit
 
-  const [rawRows, kpis] = await Promise.all([
-    listOpportunities(limit + 1, offset),
+  const flag = (key: string): boolean => {
+    const v = searchParams[key]
+    const value = Array.isArray(v) ? v[0] : v
+    return value === 'true' || value === '1'
+  }
+  const hasDocuments = flag('has_documents')
+  const activeOnly = flag('active')
+  const hideServices = flag('has_services_in_name')
+  const filtersActive = hasDocuments || activeOnly || hideServices
+
+  const [rawRows, kpis, filteredCount] = await Promise.all([
+    listOpportunities({ limit: limit + 1, offset, hasDocuments, activeOnly, hideServices }),
     getOpportunityKpis(),
+    filtersActive
+      ? countOpportunities({ hasDocuments, activeOnly, hideServices })
+      : null,
   ])
 
   const hasNext = rawRows.length > limit
   const rows = rawRows.slice(0, limit)
+
+  function filterUrl(next: {
+    hasDocuments: boolean
+    activeOnly: boolean
+    hideServices: boolean
+  }): string {
+    const sp = new URLSearchParams()
+    if (next.hasDocuments) sp.set('has_documents', 'true')
+    if (next.activeOnly) sp.set('active', 'true')
+    if (next.hideServices) sp.set('has_services_in_name', 'true')
+    const q = sp.toString()
+    return q ? `/rfp?${q}` : '/rfp'
+  }
 
   return (
     <>
@@ -81,6 +111,41 @@ export default async function RFPPage(props: PageProps) {
           <div className="card-label">Cancelled</div>
           <div className="card-value">{kpis.cancelled.toLocaleString()}</div>
         </div>
+      </div>
+
+      <div className="filter-bar">
+        <span className="filter-bar-label">Filters</span>
+        <Link
+          href={filterUrl({ hasDocuments: !hasDocuments, activeOnly, hideServices })}
+          className={`filter-chip${hasDocuments ? ' active' : ''}`}
+        >
+          <span className="filter-chip-dot" />
+          Has documents
+        </Link>
+        <Link
+          href={filterUrl({ hasDocuments, activeOnly: !activeOnly, hideServices })}
+          className={`filter-chip${activeOnly ? ' active' : ''}`}
+        >
+          <span className="filter-chip-dot" />
+          Active only
+        </Link>
+        <Link
+          href={filterUrl({ hasDocuments, activeOnly, hideServices: !hideServices })}
+          className={`filter-chip${hideServices ? ' active' : ''}`}
+        >
+          <span className="filter-chip-dot" />
+          Hide services in title
+        </Link>
+        {filteredCount != null && (
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            {filteredCount.toLocaleString()} opp{filteredCount === 1 ? '' : 's'} match
+          </span>
+        )}
+        {filtersActive && (
+          <Link href="/rfp" className="filter-bar-clear">
+            clear filters
+          </Link>
+        )}
       </div>
 
       <div className="table-container">
@@ -139,7 +204,7 @@ export default async function RFPPage(props: PageProps) {
       <Pagination
         currentIndex={pageIndex}
         hasNext={hasNext}
-        totalCount={kpis.total}
+        totalCount={filteredCount ?? kpis.total}
         limit={limit}
         searchParams={searchParams}
       />

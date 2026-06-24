@@ -1,5 +1,6 @@
 import { getParsingKpis, listClinItems } from '@/lib/db/queries/parsing'
 import Pagination from '@/components/Pagination'
+import { OpportunityLabels } from '@/components/OpportunityLabels'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,6 +77,7 @@ export default async function ParsingPage(props: PageProps) {
               <th>Brand Req?</th>
               <th>Service?</th>
               <th>Sourcing</th>
+              <th>Labels (opp)</th>
             </tr>
           </thead>
           <tbody>
@@ -93,11 +95,19 @@ export default async function ParsingPage(props: PageProps) {
                 <td>{p.brand_required == null ? '—' : p.brand_required ? 'yes' : 'no'}</td>
                 <td>{p.is_service_clin == null ? '—' : p.is_service_clin ? 'yes' : 'no'}</td>
                 <td><span className={statusBadge(p.sourcing_status)}>{p.sourcing_status ?? '—'}</span></td>
+                <td>
+                  <OpportunityLabels
+                    opportunityId={p.opportunity_id}
+                    initialIsProduct={p.opp_is_product}
+                    initialCommentary={p.opp_commentary}
+                    variant="inline"
+                  />
+                </td>
               </tr>
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={10} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
+                <td colSpan={11} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
                   No CLIN items parsed yet.
                 </td>
               </tr>

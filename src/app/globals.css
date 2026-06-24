@@ -339,3 +339,86 @@ tr:hover td {
   pointer-events: none;
 }
 
+/* Filter bar — toggleable filter chips above tables */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding: 0.55rem 0.9rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.filter-bar-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  padding: 0.3rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.filter-chip:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-muted);
+  text-decoration: none;
+}
+
+.filter-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.filter-chip.active:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  filter: brightness(1.1);
+}
+
+.filter-chip-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.filter-chip.active .filter-chip-dot {
+  background: white;
+}
+
+.filter-bar-clear {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.filter-bar-clear:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
