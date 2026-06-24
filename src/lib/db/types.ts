@@ -1,6 +1,7 @@
 export interface OpportunityListRow {
   id: string
   title: string | null
+  source: string
   agency: string | null
   posted_date: Date | null
   response_deadline: Date | null

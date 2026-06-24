@@ -57,6 +57,7 @@ export async function listOpportunities(
     SELECT
       o.id,
       o.title,
+      o.source,
       o.agency,
       o.posted_date,
       o.response_deadline,

@@ -173,12 +173,13 @@ export default async function RFPPage(props: PageProps) {
             <tr>
               <th style={{ width: '2.5rem', textAlign: 'center' }}>★</th>
               <th>ID</th>
+              <th>Source</th>
               <th>Title</th>
               <th>Agency</th>
               <th>Posted</th>
               <th>Due</th>
               <th>CLINs</th>
-              <th>Sources</th>
+              <th>Sourcing</th>
               <th>Est. Value</th>
               <th>Stage</th>
             </tr>
@@ -194,6 +195,7 @@ export default async function RFPPage(props: PageProps) {
                     {shortId(r.id)}
                   </Link>
                 </td>
+                <td style={{ fontWeight: 500 }}>{r.source}</td>
                 <td style={{ fontWeight: 500 }}>
                   <Link href={`/rfp/${r.id}`} style={{ color: 'var(--text)' }}>
                     {r.title ?? '—'}
