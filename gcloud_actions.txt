@@ -86,9 +86,13 @@ gcloud sql users create 169801273048-compute@developer \
 #   ALTER DEFAULT PRIVILEGES FOR ROLE anvil_app IN SCHEMA public
 #     GRANT SELECT ON SEQUENCES TO "169801273048-compute@developer";
 #
-#   -- UI-driven human-label columns on opportunities (in-line label editing):
-#   GRANT UPDATE (is_product, commentary, updated_at) ON opportunities
+#   -- UI-driven human-label columns on opportunities (in-line label editing
+#   -- and the star toggle on /rfp):
+#   GRANT UPDATE (is_product, commentary, is_starred, updated_at) ON opportunities
 #     TO "169801273048-compute@developer";
+#   -- If a previous narrower grant exists, the new column needs an explicit add:
+#   --   GRANT UPDATE (is_starred) ON opportunities
+#   --     TO "169801273048-compute@developer";
 #
 #   -- Human-review shadow tables (CLIN approval form + future manual sourcing).
 #   -- Append-only — no UPDATE or DELETE grants; pipeline code never reads these.

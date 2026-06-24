@@ -32,7 +32,7 @@ When a question references a DB table, column, pipeline stage, or upstream servi
 ## Conventions in this UI
 
 - **DB access is read-only except for human-input surfaces.** The Next.js Cloud Run SA has `SELECT` on everything, plus:
-  - `UPDATE` on `opportunities.is_product`, `opportunities.commentary`, `opportunities.updated_at` (in-line label editing via [src/components/OpportunityLabels.tsx](src/components/OpportunityLabels.tsx) → `PATCH /api/opportunity/[id]/labels`).
+  - `UPDATE` on `opportunities.is_product`, `opportunities.commentary`, `opportunities.is_starred`, `opportunities.updated_at` (in-line label editing via [src/components/OpportunityLabels.tsx](src/components/OpportunityLabels.tsx) and the star toggle on the RFP list, both → `PATCH /api/opportunity/[id]/labels`).
   - `INSERT` on `clin_items_human` and `sourcing_results_human` (the human-review shadow tables — see `backend/app/models/clin_item_human.py` and `sourcing_result_human.py`). Wired via `POST /api/clins/approve` from the CLIN approval form. These tables are explicitly invisible to backend pipeline code by design — keep that constraint when adding new write paths.
   - Everything else is pipeline-owned; new write surfaces should either go through a backend endpoint (see `/api/source` for the pattern) or get an explicit column-level grant added here and in [gcloud_actions.txt](gcloud_actions.txt).
 - **All money is integer cents** in the DB. Always divide by 100 for display.

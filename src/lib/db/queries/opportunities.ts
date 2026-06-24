@@ -5,6 +5,7 @@ function opportunityFilterWhere(
   hasDocuments: boolean,
   activeOnly: boolean,
   hideServices: boolean,
+  starredOnly: boolean,
 ): string {
   const conditions: string[] = []
   if (hasDocuments) {
@@ -23,6 +24,9 @@ function opportunityFilterWhere(
     // appears in the title (also matches "services"). Case-insensitive.
     conditions.push(`(o.title IS NULL OR o.title NOT ILIKE '%service%')`)
   }
+  if (starredOnly) {
+    conditions.push(`o.is_starred = true`)
+  }
   return conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 }
 
@@ -32,6 +36,7 @@ export interface ListOpportunitiesOptions {
   hasDocuments?: boolean
   activeOnly?: boolean
   hideServices?: boolean
+  starredOnly?: boolean
 }
 
 export async function listOpportunities(
@@ -43,9 +48,10 @@ export async function listOpportunities(
     hasDocuments = false,
     activeOnly = false,
     hideServices = false,
+    starredOnly = false,
   } = options
   const pool = await getPool()
-  const whereClause = opportunityFilterWhere(hasDocuments, activeOnly, hideServices)
+  const whereClause = opportunityFilterWhere(hasDocuments, activeOnly, hideServices, starredOnly)
   const { rows } = await pool.query<OpportunityListRow>(
     `
     SELECT
@@ -57,6 +63,7 @@ export async function listOpportunities(
       o.estimated_value_max,
       o.stage,
       o.status,
+      o.is_starred,
       (SELECT COUNT(*)::int FROM clin_items       WHERE opportunity_id = o.id) AS product_count,
       (SELECT COUNT(*)::int FROM sourcing_results WHERE opportunity_id = o.id) AS bid_count
     FROM opportunities o
@@ -70,11 +77,19 @@ export async function listOpportunities(
 }
 
 export async function countOpportunities(
-  options: Pick<ListOpportunitiesOptions, 'hasDocuments' | 'activeOnly' | 'hideServices'> = {},
+  options: Pick<
+    ListOpportunitiesOptions,
+    'hasDocuments' | 'activeOnly' | 'hideServices' | 'starredOnly'
+  > = {},
 ): Promise<number> {
-  const { hasDocuments = false, activeOnly = false, hideServices = false } = options
+  const {
+    hasDocuments = false,
+    activeOnly = false,
+    hideServices = false,
+    starredOnly = false,
+  } = options
   const pool = await getPool()
-  const whereClause = opportunityFilterWhere(hasDocuments, activeOnly, hideServices)
+  const whereClause = opportunityFilterWhere(hasDocuments, activeOnly, hideServices, starredOnly)
   const { rows } = await pool.query<{ count: number }>(
     `SELECT COUNT(*)::int AS count FROM opportunities o ${whereClause}`,
   )

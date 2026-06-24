@@ -23,6 +23,7 @@ const COMMENTARY_MAX = 10_000
 interface Body {
   is_product?: boolean | null
   commentary?: string | null
+  is_starred?: boolean | null
 }
 
 interface RouteContext {
@@ -44,7 +45,8 @@ export async function PATCH(req: Request, ctx: RouteContext): Promise<NextRespon
 
   const hasIsProduct = 'is_product' in body
   const hasCommentary = 'commentary' in body
-  if (!hasIsProduct && !hasCommentary) {
+  const hasIsStarred = 'is_starred' in body
+  if (!hasIsProduct && !hasCommentary && !hasIsStarred) {
     return NextResponse.json({ ok: false, message: 'No fields to update' }, { status: 400 })
   }
   if (hasIsProduct && body.is_product !== null && typeof body.is_product !== 'boolean') {
@@ -67,6 +69,12 @@ export async function PATCH(req: Request, ctx: RouteContext): Promise<NextRespon
       )
     }
   }
+  if (hasIsStarred && body.is_starred !== null && typeof body.is_starred !== 'boolean') {
+    return NextResponse.json(
+      { ok: false, message: 'is_starred must be boolean or null' },
+      { status: 400 },
+    )
+  }
 
   const setClauses: string[] = []
   const values: unknown[] = []
@@ -78,6 +86,10 @@ export async function PATCH(req: Request, ctx: RouteContext): Promise<NextRespon
   if (hasCommentary) {
     setClauses.push(`commentary = $${i++}`)
     values.push(body.commentary === '' ? null : body.commentary)
+  }
+  if (hasIsStarred) {
+    setClauses.push(`is_starred = $${i++}`)
+    values.push(body.is_starred)
   }
   setClauses.push('updated_at = NOW()')
   values.push(id)

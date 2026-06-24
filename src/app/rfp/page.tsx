@@ -6,6 +6,7 @@ import {
 } from '@/lib/db/queries/opportunities'
 import type { OpportunityListRow } from '@/lib/db/types'
 import Pagination from '@/components/Pagination'
+import { StarToggle } from '@/components/StarToggle'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,13 +62,21 @@ export default async function RFPPage(props: PageProps) {
   const hasDocuments = flag('has_documents')
   const activeOnly = flag('active')
   const hideServices = flag('has_services_in_name')
-  const filtersActive = hasDocuments || activeOnly || hideServices
+  const starredOnly = flag('starred')
+  const filtersActive = hasDocuments || activeOnly || hideServices || starredOnly
 
   const [rawRows, kpis, filteredCount] = await Promise.all([
-    listOpportunities({ limit: limit + 1, offset, hasDocuments, activeOnly, hideServices }),
+    listOpportunities({
+      limit: limit + 1,
+      offset,
+      hasDocuments,
+      activeOnly,
+      hideServices,
+      starredOnly,
+    }),
     getOpportunityKpis(),
     filtersActive
-      ? countOpportunities({ hasDocuments, activeOnly, hideServices })
+      ? countOpportunities({ hasDocuments, activeOnly, hideServices, starredOnly })
       : null,
   ])
 
@@ -78,11 +87,13 @@ export default async function RFPPage(props: PageProps) {
     hasDocuments: boolean
     activeOnly: boolean
     hideServices: boolean
+    starredOnly: boolean
   }): string {
     const sp = new URLSearchParams()
     if (next.hasDocuments) sp.set('has_documents', 'true')
     if (next.activeOnly) sp.set('active', 'true')
     if (next.hideServices) sp.set('has_services_in_name', 'true')
+    if (next.starredOnly) sp.set('starred', 'true')
     const q = sp.toString()
     return q ? `/rfp?${q}` : '/rfp'
   }
@@ -116,25 +127,32 @@ export default async function RFPPage(props: PageProps) {
       <div className="filter-bar">
         <span className="filter-bar-label">Filters</span>
         <Link
-          href={filterUrl({ hasDocuments: !hasDocuments, activeOnly, hideServices })}
+          href={filterUrl({ hasDocuments: !hasDocuments, activeOnly, hideServices, starredOnly })}
           className={`filter-chip${hasDocuments ? ' active' : ''}`}
         >
           <span className="filter-chip-dot" />
           Has documents
         </Link>
         <Link
-          href={filterUrl({ hasDocuments, activeOnly: !activeOnly, hideServices })}
+          href={filterUrl({ hasDocuments, activeOnly: !activeOnly, hideServices, starredOnly })}
           className={`filter-chip${activeOnly ? ' active' : ''}`}
         >
           <span className="filter-chip-dot" />
           Active only
         </Link>
         <Link
-          href={filterUrl({ hasDocuments, activeOnly, hideServices: !hideServices })}
+          href={filterUrl({ hasDocuments, activeOnly, hideServices: !hideServices, starredOnly })}
           className={`filter-chip${hideServices ? ' active' : ''}`}
         >
           <span className="filter-chip-dot" />
           Hide services in title
+        </Link>
+        <Link
+          href={filterUrl({ hasDocuments, activeOnly, hideServices, starredOnly: !starredOnly })}
+          className={`filter-chip${starredOnly ? ' active' : ''}`}
+        >
+          <span className="filter-chip-dot" />
+          Starred only
         </Link>
         {filteredCount != null && (
           <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
@@ -153,6 +171,7 @@ export default async function RFPPage(props: PageProps) {
         <table>
           <thead>
             <tr>
+              <th style={{ width: '2.5rem', textAlign: 'center' }}>★</th>
               <th>ID</th>
               <th>Title</th>
               <th>Agency</th>
@@ -167,6 +186,9 @@ export default async function RFPPage(props: PageProps) {
           <tbody>
             {rows.map((r: OpportunityListRow) => (
               <tr key={r.id}>
+                <td style={{ textAlign: 'center' }}>
+                  <StarToggle opportunityId={r.id} initialStarred={r.is_starred === true} />
+                </td>
                 <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
                   <Link href={`/rfp/${r.id}`} style={{ color: 'var(--accent)' }}>
                     {shortId(r.id)}
@@ -192,7 +214,7 @@ export default async function RFPPage(props: PageProps) {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
+                <td colSpan={10} style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>
                   No opportunities found.
                 </td>
               </tr>
