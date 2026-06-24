@@ -63,7 +63,8 @@ export default async function RFPPage(props: PageProps) {
   const activeOnly = flag('active')
   const hideServices = flag('has_services_in_name')
   const starredOnly = flag('starred')
-  const filtersActive = hasDocuments || activeOnly || hideServices || starredOnly
+  const recent5d = flag('recent_5d')
+  const filtersActive = hasDocuments || activeOnly || hideServices || starredOnly || recent5d
 
   const [rawRows, kpis, filteredCount] = await Promise.all([
     listOpportunities({
@@ -73,10 +74,11 @@ export default async function RFPPage(props: PageProps) {
       activeOnly,
       hideServices,
       starredOnly,
+      recent5d,
     }),
     getOpportunityKpis(),
     filtersActive
-      ? countOpportunities({ hasDocuments, activeOnly, hideServices, starredOnly })
+      ? countOpportunities({ hasDocuments, activeOnly, hideServices, starredOnly, recent5d })
       : null,
   ])
 
@@ -88,12 +90,14 @@ export default async function RFPPage(props: PageProps) {
     activeOnly: boolean
     hideServices: boolean
     starredOnly: boolean
+    recent5d: boolean
   }): string {
     const sp = new URLSearchParams()
     if (next.hasDocuments) sp.set('has_documents', 'true')
     if (next.activeOnly) sp.set('active', 'true')
     if (next.hideServices) sp.set('has_services_in_name', 'true')
     if (next.starredOnly) sp.set('starred', 'true')
+    if (next.recent5d) sp.set('recent_5d', 'true')
     const q = sp.toString()
     return q ? `/rfp?${q}` : '/rfp'
   }
@@ -127,32 +131,39 @@ export default async function RFPPage(props: PageProps) {
       <div className="filter-bar">
         <span className="filter-bar-label">Filters</span>
         <Link
-          href={filterUrl({ hasDocuments: !hasDocuments, activeOnly, hideServices, starredOnly })}
+          href={filterUrl({ hasDocuments: !hasDocuments, activeOnly, hideServices, starredOnly, recent5d })}
           className={`filter-chip${hasDocuments ? ' active' : ''}`}
         >
           <span className="filter-chip-dot" />
           Has documents
         </Link>
         <Link
-          href={filterUrl({ hasDocuments, activeOnly: !activeOnly, hideServices, starredOnly })}
+          href={filterUrl({ hasDocuments, activeOnly: !activeOnly, hideServices, starredOnly, recent5d })}
           className={`filter-chip${activeOnly ? ' active' : ''}`}
         >
           <span className="filter-chip-dot" />
           Active only
         </Link>
         <Link
-          href={filterUrl({ hasDocuments, activeOnly, hideServices: !hideServices, starredOnly })}
+          href={filterUrl({ hasDocuments, activeOnly, hideServices: !hideServices, starredOnly, recent5d })}
           className={`filter-chip${hideServices ? ' active' : ''}`}
         >
           <span className="filter-chip-dot" />
           Hide services in title
         </Link>
         <Link
-          href={filterUrl({ hasDocuments, activeOnly, hideServices, starredOnly: !starredOnly })}
+          href={filterUrl({ hasDocuments, activeOnly, hideServices, starredOnly: !starredOnly, recent5d })}
           className={`filter-chip${starredOnly ? ' active' : ''}`}
         >
           <span className="filter-chip-dot" />
           Starred only
+        </Link>
+        <Link
+          href={filterUrl({ hasDocuments, activeOnly, hideServices, starredOnly, recent5d: !recent5d })}
+          className={`filter-chip${recent5d ? ' active' : ''}`}
+        >
+          <span className="filter-chip-dot" />
+          Found in last 5 days
         </Link>
         {filteredCount != null && (
           <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>

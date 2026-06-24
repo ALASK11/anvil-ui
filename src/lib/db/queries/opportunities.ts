@@ -6,6 +6,7 @@ function opportunityFilterWhere(
   activeOnly: boolean,
   hideServices: boolean,
   starredOnly: boolean,
+  recent5d: boolean,
 ): string {
   const conditions: string[] = []
   if (hasDocuments) {
@@ -27,6 +28,9 @@ function opportunityFilterWhere(
   if (starredOnly) {
     conditions.push(`o.is_starred = true`)
   }
+  if (recent5d) {
+    conditions.push(`o.created_at >= NOW() - INTERVAL '5 days'`)
+  }
   return conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 }
 
@@ -37,6 +41,7 @@ export interface ListOpportunitiesOptions {
   activeOnly?: boolean
   hideServices?: boolean
   starredOnly?: boolean
+  recent5d?: boolean
 }
 
 export async function listOpportunities(
@@ -49,9 +54,16 @@ export async function listOpportunities(
     activeOnly = false,
     hideServices = false,
     starredOnly = false,
+    recent5d = false,
   } = options
   const pool = await getPool()
-  const whereClause = opportunityFilterWhere(hasDocuments, activeOnly, hideServices, starredOnly)
+  const whereClause = opportunityFilterWhere(
+    hasDocuments,
+    activeOnly,
+    hideServices,
+    starredOnly,
+    recent5d,
+  )
   const { rows } = await pool.query<OpportunityListRow>(
     `
     SELECT
@@ -80,7 +92,7 @@ export async function listOpportunities(
 export async function countOpportunities(
   options: Pick<
     ListOpportunitiesOptions,
-    'hasDocuments' | 'activeOnly' | 'hideServices' | 'starredOnly'
+    'hasDocuments' | 'activeOnly' | 'hideServices' | 'starredOnly' | 'recent5d'
   > = {},
 ): Promise<number> {
   const {
@@ -88,9 +100,16 @@ export async function countOpportunities(
     activeOnly = false,
     hideServices = false,
     starredOnly = false,
+    recent5d = false,
   } = options
   const pool = await getPool()
-  const whereClause = opportunityFilterWhere(hasDocuments, activeOnly, hideServices, starredOnly)
+  const whereClause = opportunityFilterWhere(
+    hasDocuments,
+    activeOnly,
+    hideServices,
+    starredOnly,
+    recent5d,
+  )
   const { rows } = await pool.query<{ count: number }>(
     `SELECT COUNT(*)::int AS count FROM opportunities o ${whereClause}`,
   )

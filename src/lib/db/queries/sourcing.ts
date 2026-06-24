@@ -139,6 +139,60 @@ function groupedSourcingWhere(hasDocuments: boolean, activeOnly: boolean): strin
   return conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 }
 
+export interface HumanSourcingResultRow {
+  id: string
+  opportunity_id: string
+  human_clin_item_id: string | null
+  supplier_name: string | null
+  retailer_name: string | null
+  product_name: string | null
+  product_url: string | null
+  sku: string | null
+  unit_price_cents: number | null
+  total_landed_cost_cents: number | null
+  bid_price_recommended_cents: number | null
+  margin_pct: number | null
+  lead_time_days: number | null
+  confidence: string | null
+  is_selected: boolean | null
+  sourced_by: string | null
+  sourced_at: Date | null
+  created_at: Date | null
+}
+
+export async function listHumanSourcingResultsForOpportunity(
+  opportunityId: string,
+): Promise<HumanSourcingResultRow[]> {
+  const pool = await getPool()
+  const { rows } = await pool.query<HumanSourcingResultRow>(
+    `SELECT
+       sr.id,
+       sr.opportunity_id,
+       sr.human_clin_item_id,
+       COALESCE(s.name, sr.supplier_name_freetext) AS supplier_name,
+       sr.retailer_name,
+       sr.product_name,
+       sr.product_url,
+       sr.sku,
+       sr.unit_price_cents,
+       sr.total_landed_cost_cents,
+       sr.bid_price_recommended_cents,
+       sr.margin_pct,
+       sr.lead_time_days,
+       sr.confidence,
+       sr.is_selected,
+       sr.sourced_by,
+       sr.sourced_at,
+       sr.created_at
+     FROM sourcing_results_human sr
+     LEFT JOIN suppliers s ON s.id = sr.supplier_id
+     WHERE sr.opportunity_id = $1
+     ORDER BY sr.sourced_at DESC NULLS LAST, sr.created_at DESC`,
+    [opportunityId],
+  )
+  return rows
+}
+
 export async function countGroupedSourcingOpps(
   options: Pick<ListGroupedSourcingResultsOptions, 'hasDocuments' | 'activeOnly'> = {},
 ): Promise<number> {

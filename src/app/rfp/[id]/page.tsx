@@ -4,10 +4,26 @@ import {
   getOpportunity,
   listOpportunityDocuments,
   getOpportunityParsedJson,
+  listClinItemsForOpportunity,
+  listHumanClinItemsForOpportunity,
 } from '@/lib/db/queries/opportunities'
+import {
+  listSourcingResults,
+  listHumanSourcingResultsForOpportunity,
+  type SourcingResultRow,
+  type HumanSourcingResultRow,
+} from '@/lib/db/queries/sourcing'
 import { planetbidsLinks } from '@/lib/opportunity-links'
 import { OpportunityLabels } from '@/components/OpportunityLabels'
 import { ParsedJsonPanel } from '@/components/ParsedJsonPanel'
+import { PdfParseTool } from '@/components/PdfParseTool'
+import {
+  ClinSection,
+  HumanClinSection,
+  groupHeaderStyle,
+  groupSummaryStyle,
+} from '@/components/ClinSections'
+import { SourceHumanClinsButton } from '@/components/SourceHumanClinsButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,15 +51,46 @@ interface PageProps {
 
 export default async function BidDetailPage({ params }: PageProps) {
   const { id } = await params
-  const [opp, docs, parsedJson] = await Promise.all([
+  const [
+    opp,
+    docs,
+    parsedJson,
+    clinItems,
+    humanClinItems,
+    rawSourcingResults,
+    rawHumanSourcingResults,
+  ] = await Promise.all([
     getOpportunity(id),
     listOpportunityDocuments(id),
     getOpportunityParsedJson(id),
+    listClinItemsForOpportunity(id),
+    listHumanClinItemsForOpportunity(id),
+    listSourcingResults({ opportunityId: id }),
+    listHumanSourcingResultsForOpportunity(id),
   ])
 
   if (!opp) notFound()
 
   const pb = planetbidsLinks(opp)
+
+  // Group machine sourcing results by clin_item_id so each ClinSection only
+  // sees its own candidates.
+  const resultsByClin = new Map<string | null, SourcingResultRow[]>()
+  for (const r of rawSourcingResults) {
+    const key = r.clin_item_id ?? null
+    const bucket = resultsByClin.get(key)
+    if (bucket) bucket.push(r)
+    else resultsByClin.set(key, [r])
+  }
+
+  // Same grouping for human sourcing results, keyed by human_clin_item_id.
+  const humanResultsByClin = new Map<string | null, HumanSourcingResultRow[]>()
+  for (const r of rawHumanSourcingResults) {
+    const key = r.human_clin_item_id ?? null
+    const bucket = humanResultsByClin.get(key)
+    if (bucket) bucket.push(r)
+    else humanResultsByClin.set(key, [r])
+  }
 
   return (
     <>
@@ -95,12 +142,56 @@ export default async function BidDetailPage({ params }: PageProps) {
         initialCommentary={opp.commentary}
       />
 
+      {clinItems.length > 0 && (
+        <details open style={groupHeaderStyle}>
+          <summary style={groupSummaryStyle}>
+            Machine-parsed CLINs ({clinItems.length})
+          </summary>
+          <div style={{ padding: '0 0.85rem 0.5rem' }}>
+            {clinItems.map((clin) => (
+              <ClinSection
+                key={clin.id}
+                clin={clin}
+                results={resultsByClin.get(clin.id) ?? []}
+              />
+            ))}
+          </div>
+        </details>
+      )}
+
+      <SourceHumanClinsButton
+        opportunityId={opp.id}
+        humanClinCount={humanClinItems.length}
+      />
+
+      {humanClinItems.length > 0 && (
+        <details open style={groupHeaderStyle}>
+          <summary style={groupSummaryStyle}>
+            Human-reviewed CLINs ({humanClinItems.length})
+          </summary>
+          <div style={{ padding: '0 0.85rem 0.5rem' }}>
+            {humanClinItems.map((clin) => (
+              <HumanClinSection
+                key={clin.id}
+                clin={clin}
+                results={humanResultsByClin.get(clin.id) ?? []}
+              />
+            ))}
+          </div>
+        </details>
+      )}
+
       {parsedJson && (
         <ParsedJsonPanel
           data={parsedJson}
           title={`Parsed JSON — ${parsedJson.clin_items.length} CLIN item${parsedJson.clin_items.length === 1 ? '' : 's'}`}
         />
       )}
+
+      <PdfParseTool
+        opportunityId={opp.id}
+        documents={docs.map((d) => ({ id: d.id, filename: d.filename }))}
+      />
 
       <div className="card-grid">
         <div className="card">
