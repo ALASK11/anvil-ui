@@ -166,3 +166,79 @@ gcloud run services update private-nextjs-site \
   --memory=5Gi \
   --cpu=2
 
+# ============================================================
+# GitHub Actions CI/CD — Workload Identity Federation setup
+# ============================================================
+# One-time setup so .github/workflows/deploy.yml can deploy on push to main
+# without a long-lived SA key in GitHub Secrets. Run these once; afterwards
+# every `git push origin main` builds the image and deploys it to Cloud Run.
+#
+# Cloud Build logs land in the standard Cloud Build console (no custom log
+# bucket needed — we checked the backend repo's terraform, no special log
+# sink there to mirror).
+#
+# ------- 1. Dedicated deployer service account --------------
+
+gcloud iam service-accounts create github-actions-deploy \
+  --display-name="GitHub Actions deployer" \
+  --project=anvil-private
+
+# IAM needs ~5s to propagate after create — bindings will fail with
+# "Service account does not exist" if you don't wait.
+sleep 10
+
+# Bind the minimum roles needed to build and ship.
+# - run.developer        → update Cloud Run services (no admin needed)
+# - cloudbuild.builds.editor → submit builds
+# - artifactregistry.writer  → push the resulting image
+# - storage.admin            → Cloud Build staging bucket (gs://PROJECT_cloudbuild)
+
+for role in roles/run.developer roles/cloudbuild.builds.editor \
+            roles/artifactregistry.writer roles/storage.admin; do
+  gcloud projects add-iam-policy-binding anvil-private \
+    --member="serviceAccount:github-actions-deploy@anvil-private.iam.gserviceaccount.com" \
+    --role="$role"
+done
+
+# Allow the deployer to "actAs" the runtime SA on Cloud Run. Required when
+# the deployed service runs as a different SA than the deployer.
+
+gcloud iam service-accounts add-iam-policy-binding \
+  169801273048-compute@developer.gserviceaccount.com \
+  --member="serviceAccount:github-actions-deploy@anvil-private.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser" \
+  --project=anvil-private
+
+# ------- 2. Workload Identity Pool + GitHub OIDC provider ----
+
+gcloud iam workload-identity-pools create github-actions \
+  --location=global \
+  --display-name="GitHub Actions" \
+  --project=anvil-private
+
+gcloud iam workload-identity-pools providers create-oidc github \
+  --location=global \
+  --workload-identity-pool=github-actions \
+  --display-name="GitHub" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner,attribute.ref=assertion.ref" \
+  --attribute-condition="assertion.repository_owner == 'ALASK11'" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --project=anvil-private
+
+# ------- 3. Bind the GitHub repo to the deployer SA ----------
+# principalSet locks the binding to a single GitHub repo. Any branch on that
+# repo can deploy; if you want to restrict to main only, swap the attribute
+# from attribute.repository to attribute.ref and pin to refs/heads/main.
+
+gcloud iam service-accounts add-iam-policy-binding \
+  github-actions-deploy@anvil-private.iam.gserviceaccount.com \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/169801273048/locations/global/workloadIdentityPools/github-actions/attribute.repository/ALASK11/anvil" \
+  --project=anvil-private
+
+# ------- 4. Verify --------------------------------------------
+# After this is set up, push to main. The workflow logs in GitHub will show
+# `google-github-actions/auth@v2` minting a token, then `gcloud builds
+# submit` running. Build progress also visible at:
+#   https://console.cloud.google.com/cloud-build/builds?project=anvil-private
+

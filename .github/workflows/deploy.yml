@@ -1,0 +1,59 @@
+name: Deploy to Cloud Run
+
+# Trigger:
+#   - every push to main → automatic deploy
+#   - workflow_dispatch  → manual button in the Actions tab
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # needed to mint the OIDC token consumed by WIF
+
+# Don't overlap deploys; if a second push lands while the first is mid-build
+# it queues behind it instead of running in parallel against the same image tag.
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: anvil-private
+  REGION: us-central1
+  IMAGE: us-central1-docker.pkg.dev/anvil-private/nextjs-repo/nextjs-app
+  SERVICE: private-nextjs-site
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Auth to GCP via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/169801273048/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: github-actions-deploy@anvil-private.iam.gserviceaccount.com
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build image with Cloud Build
+        run: gcloud builds submit --tag "${IMAGE}" --project "${PROJECT_ID}"
+
+      - name: Deploy revision to Cloud Run
+        run: |
+          gcloud run services update "${SERVICE}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --image "${IMAGE}"
+
+      - name: Show service URL
+        run: |
+          gcloud run services describe "${SERVICE}" \
+            --region "${REGION}" \
+            --project "${PROJECT_ID}" \
+            --format="value(status.url)"
