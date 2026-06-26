@@ -233,7 +233,7 @@ gcloud iam workload-identity-pools providers create-oidc github \
 gcloud iam service-accounts add-iam-policy-binding \
   github-actions-deploy@anvil-private.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/169801273048/locations/global/workloadIdentityPools/github-actions/attribute.repository/ALASK11/anvil" \
+  --member="principalSet://iam.googleapis.com/projects/169801273048/locations/global/workloadIdentityPools/github-actions/attribute.repository/ALASK11/anvil-ui" \
   --project=anvil-private
 
 # ------- 4. Verify --------------------------------------------
