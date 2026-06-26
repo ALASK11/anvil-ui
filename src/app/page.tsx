@@ -1,129 +1,81 @@
-import {
-  getFunnelCounts,
-  getDashboardKpis,
-  listRecentBidDecisions,
-} from '@/lib/db/queries/dashboard'
+import Link from 'next/link'
+import { getPlanetbidsDiscoveryLast7Days } from '@/lib/db/queries/dashboard'
+import { listOpportunities } from '@/lib/db/queries/opportunities'
+import { DiscoveryChart, type DiscoveryPoint } from '@/components/DiscoveryChart'
+import { RfpListTable } from '@/components/RfpListTable'
 
 export const dynamic = 'force-dynamic'
 
-function decisionBadge(decision: string | null, result: string | null) {
-  if (result === 'won') return 'badge badge-green'
-  if (result === 'lost') return 'badge badge-red'
-  if (result === 'no_award') return 'badge badge-muted'
-  if (decision === 'pursue') return 'badge badge-purple'
-  if (decision === 'pass') return 'badge badge-muted'
-  return 'badge badge-yellow'
+interface PageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-function decisionLabel(decision: string | null, result: string | null) {
-  if (result) return result.replace(/_/g, ' ')
-  if (decision) return decision
-  return 'pending'
-}
+export default async function DashboardPage(props: PageProps) {
+  const searchParams = await props.searchParams
+  const flag = (key: string): boolean => {
+    const v = searchParams[key]
+    const value = Array.isArray(v) ? v[0] : v
+    return value === 'true' || value === '1'
+  }
+  const noClin = flag('no_clin')
 
-function formatDate(d: Date | null) {
-  if (!d) return '—'
-  return new Date(d).toISOString().slice(0, 10)
-}
-
-export default async function DashboardPage() {
-  const [funnel, kpis, recent] = await Promise.all([
-    getFunnelCounts(),
-    getDashboardKpis(),
-    listRecentBidDecisions(10),
+  const [discoveryRows, digestRows] = await Promise.all([
+    getPlanetbidsDiscoveryLast7Days(),
+    listOpportunities({
+      limit: 500,
+      parsedOnly: true,
+      hasClin: !noClin,
+      withoutClin: noClin,
+      hideServices: true,
+      discoveredYesterday: true,
+    }),
   ])
 
-  const stages = [
-    { name: 'Opportunities', count: funnel.opportunities },
-    { name: 'Parsed', count: funnel.parsed },
-    { name: 'Sourced', count: funnel.sourced },
-    { name: 'Ranked', count: funnel.ranked },
-    { name: 'Reviewed', count: funnel.reviewed },
-    { name: 'Submitted', count: funnel.submitted },
-  ]
+  // Pad to seven UTC calendar days so the X axis is continuous.
+  const today = new Date()
+  today.setUTCHours(0, 0, 0, 0)
+  const dates: string[] = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today)
+    d.setUTCDate(today.getUTCDate() - i)
+    dates.push(d.toISOString().slice(0, 10))
+  }
+
+  const byDate = new Map(discoveryRows.map((r) => [r.discovered_date, r]))
+  const chartData: DiscoveryPoint[] = dates.map((date) => {
+    const row = byDate.get(date)
+    return {
+      date,
+      with_docs: row?.with_downloaded_docs ?? 0,
+      without_docs: row?.without_downloaded_docs ?? 0,
+    }
+  })
+
+  const digestTitle = noClin
+    ? `Digest — Yesterday's parsed RFPs with no CLINs (${digestRows.length})`
+    : `Digest — Yesterday's most attractive RFPs (${digestRows.length})`
+
+  const digestEmpty = noClin
+    ? 'No parsed RFPs without CLINs discovered yesterday.'
+    : 'No parsed RFPs with CLINs discovered yesterday.'
 
   return (
     <>
       <div className="page-header">
-        <h1>Pipeline Dashboard</h1>
-        <p>Real-time overview of the Anvil RFP bidding pipeline</p>
+        <h1>Dashboard</h1>
       </div>
 
-      <div className="pipeline-funnel">
-        {stages.map((stage, i) => (
-          <div key={stage.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div className="funnel-stage">
-              <div className="funnel-stage-name">{stage.name}</div>
-              <div className="funnel-stage-count">{stage.count.toLocaleString()}</div>
-            </div>
-            {i < stages.length - 1 && <div className="funnel-arrow">&rarr;</div>}
-          </div>
-        ))}
+      <DiscoveryChart data={chartData} />
+
+      <div className="filter-bar" style={{ marginTop: '1rem' }}>
+        <span className="filter-bar-label">Digest filter</span>
+        <Link href={noClin ? '/' : '/?no_clin=true'} className={`filter-chip${noClin ? ' active' : ''}`}>
+          <span className="filter-chip-dot" />
+          No parsed CLIN docs
+        </Link>
       </div>
 
-      <div className="card-grid">
-        <div className="card">
-          <div className="card-label">Active Sources</div>
-          <div className="card-value">{kpis.active_sources}</div>
-          <div className="card-sub">Distinct values in opportunities.source</div>
-        </div>
-        <div className="card">
-          <div className="card-label">Pending Review</div>
-          <div className="card-value">{kpis.pending_review.toLocaleString()}</div>
-          <div className="card-sub">Scored but not decided</div>
-        </div>
-        <div className="card">
-          <div className="card-label">Pursued (30d)</div>
-          <div className="card-value">{kpis.pursued_30d.toLocaleString()}</div>
-        </div>
-        <div className="card">
-          <div className="card-label">Win Rate</div>
-          <div className="card-value">
-            {kpis.win_rate_pct == null ? '—' : `${kpis.win_rate_pct.toFixed(0)}%`}
-          </div>
-          <div className="card-sub">won / (won + lost)</div>
-        </div>
-      </div>
-
-      <div className="table-container">
-        <div className="table-header">Recent Bid Decisions</div>
-        <table>
-          <thead>
-            <tr>
-              <th>RFP</th>
-              <th>Agency</th>
-              <th>Fit Score</th>
-              <th>Decision</th>
-              <th>Decided</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recent.map((r) => (
-              <tr key={r.id}>
-                <td style={{ fontWeight: 500 }}>{r.opp_title ?? '—'}</td>
-                <td>{r.agency ?? '—'}</td>
-                <td>{r.fit_score ?? '—'}</td>
-                <td>
-                  <span className={decisionBadge(r.decision, r.result)}>
-                    {decisionLabel(r.decision, r.result)}
-                  </span>
-                </td>
-                <td style={{ color: 'var(--text-muted)' }}>{formatDate(r.decided_at)}</td>
-              </tr>
-            ))}
-            {recent.length === 0 && (
-              <tr>
-                <td
-                  colSpan={5}
-                  style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}
-                >
-                  No bid decisions yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <RfpListTable rows={digestRows} title={digestTitle} emptyMessage={digestEmpty} />
     </>
   )
 }

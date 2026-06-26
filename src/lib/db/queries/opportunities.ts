@@ -1,15 +1,21 @@
 import { getPool } from '../pool'
 import type { OpportunityListRow } from '../types'
 
-function opportunityFilterWhere(
-  hasDocuments: boolean,
-  activeOnly: boolean,
-  hideServices: boolean,
-  starredOnly: boolean,
-  recent5d: boolean,
-): string {
+interface FilterFlags {
+  hasDocuments?: boolean
+  activeOnly?: boolean
+  hideServices?: boolean
+  starredOnly?: boolean
+  recent5d?: boolean
+  parsedOnly?: boolean
+  hasClin?: boolean
+  withoutClin?: boolean
+  discoveredYesterday?: boolean
+}
+
+function opportunityFilterWhere(flags: FilterFlags): string {
   const conditions: string[] = []
-  if (hasDocuments) {
+  if (flags.hasDocuments) {
     conditions.push(`EXISTS (
       SELECT 1 FROM opportunity_documents d
       WHERE d.opportunity_id = o.id
@@ -17,53 +23,50 @@ function opportunityFilterWhere(
         AND d.superseded_by IS NULL
     )`)
   }
-  if (activeOnly) {
+  if (flags.activeOnly) {
     conditions.push(`o.status = 'active'`)
   }
-  if (hideServices) {
+  if (flags.hideServices) {
     // Best-effort heuristic: exclude opps where the literal word "service"
     // appears in the title (also matches "services"). Case-insensitive.
     conditions.push(`(o.title IS NULL OR o.title NOT ILIKE '%service%')`)
   }
-  if (starredOnly) {
+  if (flags.starredOnly) {
     conditions.push(`o.is_starred = true`)
   }
-  if (recent5d) {
+  if (flags.recent5d) {
     conditions.push(`o.created_at >= NOW() - INTERVAL '5 days'`)
+  }
+  if (flags.parsedOnly) {
+    conditions.push(`o.parsed_at IS NOT NULL`)
+  }
+  if (flags.hasClin) {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM clin_items ci WHERE ci.opportunity_id = o.id)`,
+    )
+  }
+  if (flags.withoutClin) {
+    conditions.push(
+      `NOT EXISTS (SELECT 1 FROM clin_items ci WHERE ci.opportunity_id = o.id)`,
+    )
+  }
+  if (flags.discoveredYesterday) {
+    conditions.push(`o.created_at::date = (CURRENT_DATE - 1)`)
   }
   return conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 }
 
-export interface ListOpportunitiesOptions {
+export interface ListOpportunitiesOptions extends FilterFlags {
   limit?: number
   offset?: number
-  hasDocuments?: boolean
-  activeOnly?: boolean
-  hideServices?: boolean
-  starredOnly?: boolean
-  recent5d?: boolean
 }
 
 export async function listOpportunities(
   options: ListOpportunitiesOptions = {},
 ): Promise<OpportunityListRow[]> {
-  const {
-    limit = 100,
-    offset = 0,
-    hasDocuments = false,
-    activeOnly = false,
-    hideServices = false,
-    starredOnly = false,
-    recent5d = false,
-  } = options
+  const { limit = 100, offset = 0, ...flags } = options
   const pool = await getPool()
-  const whereClause = opportunityFilterWhere(
-    hasDocuments,
-    activeOnly,
-    hideServices,
-    starredOnly,
-    recent5d,
-  )
+  const whereClause = opportunityFilterWhere(flags)
   const { rows } = await pool.query<OpportunityListRow>(
     `
     SELECT
@@ -89,27 +92,9 @@ export async function listOpportunities(
   return rows
 }
 
-export async function countOpportunities(
-  options: Pick<
-    ListOpportunitiesOptions,
-    'hasDocuments' | 'activeOnly' | 'hideServices' | 'starredOnly' | 'recent5d'
-  > = {},
-): Promise<number> {
-  const {
-    hasDocuments = false,
-    activeOnly = false,
-    hideServices = false,
-    starredOnly = false,
-    recent5d = false,
-  } = options
+export async function countOpportunities(options: FilterFlags = {}): Promise<number> {
   const pool = await getPool()
-  const whereClause = opportunityFilterWhere(
-    hasDocuments,
-    activeOnly,
-    hideServices,
-    starredOnly,
-    recent5d,
-  )
+  const whereClause = opportunityFilterWhere(options)
   const { rows } = await pool.query<{ count: number }>(
     `SELECT COUNT(*)::int AS count FROM opportunities o ${whereClause}`,
   )
