@@ -1,4 +1,5 @@
 #!/bin/bash
+#test
 set -e
 
 IMAGE="us-central1-docker.pkg.dev/anvil-private/nextjs-repo/nextjs-app"
