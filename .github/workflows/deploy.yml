@@ -41,8 +41,13 @@ jobs:
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
+      # --gcs-log-dir avoids default logs bucket; deploy SA can stream via storage.admin.
       - name: Build image with Cloud Build
-        run: gcloud builds submit --tag "${IMAGE}" --project "${PROJECT_ID}"
+        run: |
+          gcloud builds submit \
+            --tag "${IMAGE}" \
+            --project "${PROJECT_ID}" \
+            --gcs-log-dir=gs://anvil-private_cloudbuild/build-logs
 
       - name: Deploy revision to Cloud Run
         run: |
