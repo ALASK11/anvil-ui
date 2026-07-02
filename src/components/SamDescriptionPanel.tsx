@@ -62,7 +62,12 @@ export function SamDescriptionPanel({ opportunityId, source, extra }: Props) {
     <details open style={panelStyle}>
       <summary style={summaryStyle}>SAM.gov description</summary>
       {view.kind === 'text' ? (
-        <div style={bodyStyle}>{view.body}</div>
+        <>
+          <div style={bodyStyle}>{view.body}</div>
+          <div style={actionStyle}>
+            <FetchSamDescriptionButton opportunityId={opportunityId} refetch />
+          </div>
+        </>
       ) : view.kind === 'pending_enrichment' ? (
         <>
           <p style={mutedStyle}>Description not fetched yet.</p>

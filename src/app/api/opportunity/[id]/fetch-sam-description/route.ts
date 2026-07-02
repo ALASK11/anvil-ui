@@ -3,7 +3,6 @@ import { getPool } from '@/lib/db/pool'
 import { toRecord } from '@/lib/opportunity-links'
 import {
   fetchSamDescriptionForOpportunity,
-  isEnrichedSamDescription,
 } from '@/lib/sam-fetch-description'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -74,10 +73,7 @@ export async function POST(_req: Request, ctx: RouteContext): Promise<NextRespon
     )
   }
 
-  if (isEnrichedSamDescription(existingDesc)) {
-    return NextResponse.json({ ok: true, already_enriched: true, description: existingDesc })
-  }
-
+  // Always re-fetch from SAM (1–2 API calls). Skip only for not_available above.
   const result = await fetchSamDescriptionForOpportunity(opp.source_id, apiKey, existingDesc)
 
   if (!result.ok) {
