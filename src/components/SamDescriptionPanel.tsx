@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { FetchSamDescriptionButton } from '@/components/FetchSamDescriptionButton'
 import { extractSamDescription } from '@/lib/sam-description'
 
 const panelStyle: CSSProperties = {
@@ -29,18 +30,33 @@ const mutedStyle: CSSProperties = {
   color: 'var(--text-muted)',
 }
 
+const actionStyle: CSSProperties = {
+  padding: '0 0.85rem 0.85rem',
+}
+
 interface Props {
+  opportunityId: string
   source: string
   extra: unknown
 }
 
-export function SamDescriptionPanel({ source, extra }: Props) {
+export function SamDescriptionPanel({ opportunityId, source, extra }: Props) {
   if (source !== 'sam_gov') return null
 
   const view = extractSamDescription(extra)
   if (!view) return null
 
-  if (view.kind === 'empty') return null
+  if (view.kind === 'empty') {
+    return (
+      <details open style={panelStyle}>
+        <summary style={summaryStyle}>SAM.gov description</summary>
+        <p style={mutedStyle}>Description not fetched yet.</p>
+        <div style={actionStyle}>
+          <FetchSamDescriptionButton opportunityId={opportunityId} />
+        </div>
+      </details>
+    )
+  }
 
   return (
     <details open style={panelStyle}>
@@ -48,10 +64,12 @@ export function SamDescriptionPanel({ source, extra }: Props) {
       {view.kind === 'text' ? (
         <div style={bodyStyle}>{view.body}</div>
       ) : view.kind === 'pending_enrichment' ? (
-        <p style={mutedStyle}>
-          Description not enriched yet — the nightly SAM job will fetch full
-          solicitation text from SAM.gov.
-        </p>
+        <>
+          <p style={mutedStyle}>Description not fetched yet.</p>
+          <div style={actionStyle}>
+            <FetchSamDescriptionButton opportunityId={opportunityId} />
+          </div>
+        </>
       ) : (
         <p style={mutedStyle}>
           SAM.gov has no description text for this notice.

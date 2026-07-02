@@ -49,3 +49,10 @@ When a question references a DB table, column, pipeline stage, or upstream servi
 - Sourcing Cloud Run service: `anvil-sourcing` (`https://anvil-sourcing-169801273048.us-central1.run.app`)
 - Compute SA used by Next.js (currently default): `169801273048-compute@developer.gserviceaccount.com`
 - Cloud SQL IAM Postgres username for that SA: `169801273048-compute@developer`
+
+## Local dev
+
+- Daily work: `npm run dev` (http://localhost:3000)
+- After HMR 500 / `Cannot find module './873.js'` / missing `.next` files: `npm run dev:clean` (kills :3000/:3001, removes `.next`, restarts dev)
+- **Do not** run `npm run build` while dev is running — both use `.next` and the build will corrupt the live dev server. Use `npm run typecheck` to verify TypeScript without touching `.next`.
+- Before a production build: stop dev, then `npm run build` (`prebuild` fails fast if :3000/:3001 is still in use)

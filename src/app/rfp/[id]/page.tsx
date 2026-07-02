@@ -157,7 +157,7 @@ export default async function BidDetailPage({ params }: PageProps) {
         initialCommentary={opp.commentary}
       />
 
-      <SamDescriptionPanel source={opp.source} extra={opp.extra} />
+      <SamDescriptionPanel opportunityId={opp.id} source={opp.source} extra={opp.extra} />
 
       {clinItems.length > 0 && (
         <details open style={groupHeaderStyle}>

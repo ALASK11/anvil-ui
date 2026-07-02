@@ -28,9 +28,49 @@ function unwrapJsonDescription(raw: string): string {
   return raw
 }
 
-function stripHtml(html: string): string {
-  const text = html.replace(/<[^>]+>/g, ' ')
-  return text.replace(/\s+/g, ' ').trim()
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+}
+
+/** Decode HTML entities (mirrors Python html.unescape for SAM description text). */
+export function decodeSamHtmlEntities(text: string): string {
+  const decoded = text.replace(/&(#x[0-9a-fA-F]+|#\d+|\w+);/g, (match, entity: string) => {
+    if (entity.startsWith('#x') || entity.startsWith('#X')) {
+      const code = parseInt(entity.slice(2), 16)
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match
+    }
+    if (entity.startsWith('#')) {
+      const code = parseInt(entity.slice(1), 10)
+      return Number.isFinite(code) ? String.fromCodePoint(code) : match
+    }
+    const named = NAMED_ENTITIES[entity.toLowerCase()]
+    return named ?? match
+  })
+  return decoded.replace(/\u00a0/g, ' ')
+}
+
+/** Decode entities and normalize whitespace while preserving paragraph newlines. */
+export function normalizeSamDescriptionText(text: string): string {
+  let out = decodeSamHtmlEntities(text)
+  out = out.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  out = out.replace(/[ \t\f\v\u00a0]+/g, ' ')
+  out = out.replace(/[ \t]+$/gm, '')
+  out = out.replace(/\n{3,}/g, '\n\n')
+  return out.trim()
+}
+
+export function stripSamHtml(html: string): string {
+  let text = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+  return normalizeSamDescriptionText(text)
 }
 
 function capLength(text: string): string {
@@ -59,7 +99,9 @@ export function extractSamDescription(extra: unknown): SamDescriptionView | null
 
   let text = unwrapJsonDescription(raw)
   if (text.includes('<') && text.includes('>')) {
-    text = stripHtml(text)
+    text = stripSamHtml(text)
+  } else {
+    text = normalizeSamDescriptionText(text)
   }
   if (!text || text.length <= 10) {
     return { kind: 'empty' }

@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "node scripts/kill-dev-and-clean.mjs && next dev",
+    "prebuild": "node scripts/assert-dev-not-running.mjs",
+    "typecheck": "tsc --noEmit",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
