@@ -5,6 +5,8 @@ import { useState, type CSSProperties } from 'react'
 
 interface Props {
   opportunityId: string
+  /** When description already loaded — label becomes "Re-fetch description". */
+  refetch?: boolean
 }
 
 const buttonStyle: CSSProperties = {
@@ -18,7 +20,7 @@ const buttonStyle: CSSProperties = {
   cursor: 'pointer',
 }
 
-export function FetchSamDescriptionButton({ opportunityId }: Props) {
+export function FetchSamDescriptionButton({ opportunityId, refetch = false }: Props) {
   const router = useRouter()
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [error, setError] = useState('')
@@ -30,7 +32,17 @@ export function FetchSamDescriptionButton({ opportunityId }: Props) {
       const res = await fetch(`/api/opportunity/${opportunityId}/fetch-sam-description`, {
         method: 'POST',
       })
-      const data = (await res.json()) as { ok?: boolean; message?: string }
+      const text = await res.text()
+      let data: { ok?: boolean; message?: string } = {}
+      if (text) {
+        try {
+          data = JSON.parse(text) as { ok?: boolean; message?: string }
+        } catch {
+          setStatus('error')
+          setError(`HTTP ${res.status}`)
+          return
+        }
+      }
       if (!res.ok || data?.ok === false) {
         setStatus('error')
         setError(typeof data?.message === 'string' ? data.message : `HTTP ${res.status}`)
@@ -56,7 +68,7 @@ export function FetchSamDescriptionButton({ opportunityId }: Props) {
         onClick={run}
         disabled={status === 'loading'}
       >
-        {status === 'loading' ? 'Fetching…' : 'Fetch description'}
+        {status === 'loading' ? 'Fetching…' : refetch ? 'Re-fetch description' : 'Fetch description'}
       </button>
       {status === 'error' && (
         <span style={{ fontSize: '0.78rem', color: 'var(--red)' }}>{error}</span>
