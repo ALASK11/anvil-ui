@@ -1,6 +1,6 @@
 import type { OpportunityDetail } from './db/queries/opportunities'
 
-function toRecord(value: unknown): Record<string, unknown> | null {
+export function toRecord(value: unknown): Record<string, unknown> | null {
   if (!value) return null
   if (typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, unknown>
@@ -35,6 +35,20 @@ export interface PlanetbidsLinks {
  * is missing/malformed. Company portal URL is derived by trimming the
  * /bo/bo-detail/<id> suffix from detail_url.
  */
+/**
+ * SAM.gov workspace link from extra.detail_url (set at discovery).
+ */
+export function samGovDetailUrl(
+  opp: Pick<OpportunityDetail, 'source' | 'extra'>,
+): string | null {
+  if (opp.source !== 'sam_gov') return null
+  const extra = toRecord(opp.extra)
+  if (!extra) return null
+  const detail = typeof extra.detail_url === 'string' ? extra.detail_url : null
+  if (!detail || !/^https?:\/\//i.test(detail)) return null
+  return detail
+}
+
 export function planetbidsLinks(
   opp: Pick<OpportunityDetail, 'source' | 'extra'>,
 ): PlanetbidsLinks | null {

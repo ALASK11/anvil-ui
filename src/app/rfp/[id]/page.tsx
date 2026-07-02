@@ -13,8 +13,9 @@ import {
   type SourcingResultRow,
   type HumanSourcingResultRow,
 } from '@/lib/db/queries/sourcing'
-import { planetbidsLinks } from '@/lib/opportunity-links'
+import { planetbidsLinks, samGovDetailUrl } from '@/lib/opportunity-links'
 import { OpportunityLabels } from '@/components/OpportunityLabels'
+import { SamDescriptionPanel } from '@/components/SamDescriptionPanel'
 import { ParsedJsonPanel } from '@/components/ParsedJsonPanel'
 import { PdfParseTool } from '@/components/PdfParseTool'
 import {
@@ -72,6 +73,7 @@ export default async function BidDetailPage({ params }: PageProps) {
   if (!opp) notFound()
 
   const pb = planetbidsLinks(opp)
+  const samDetail = samGovDetailUrl(opp)
 
   // Group machine sourcing results by clin_item_id so each ClinSection only
   // sees its own candidates.
@@ -108,6 +110,19 @@ export default async function BidDetailPage({ params }: PageProps) {
             </>
           )}
         </p>
+        {samDetail && (
+          <p style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+            SAM.gov:{' '}
+            <a
+              href={samDetail}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--accent)' }}
+            >
+              View on SAM.gov
+            </a>
+          </p>
+        )}
         {pb && (
           <p style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
             PlanetBids:{' '}
@@ -141,6 +156,8 @@ export default async function BidDetailPage({ params }: PageProps) {
         initialIsProduct={opp.is_product}
         initialCommentary={opp.commentary}
       />
+
+      <SamDescriptionPanel opportunityId={opp.id} source={opp.source} extra={opp.extra} />
 
       {clinItems.length > 0 && (
         <details open style={groupHeaderStyle}>
