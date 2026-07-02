@@ -1,10 +1,17 @@
 import { execSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 
 const DEV_PORTS = [3000, 3001]
 
+// Local-dev guard only — skip in CI and Docker builds (Cloud Build false-positives on lsof).
+const ci = process.env.CI
+if (ci === 'true' || ci === '1' || existsSync('/.dockerenv')) {
+  process.exit(0)
+}
+
 function pidsOnPort(port) {
   try {
-    const out = execSync(`lsof -ti :${port}`, {
+    const out = execSync(`lsof -tiTCP:${port} -sTCP:LISTEN`, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim()
