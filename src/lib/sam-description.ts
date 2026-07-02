@@ -14,18 +14,50 @@ function asTrimmedString(value: unknown): string | null {
   return trimmed || null
 }
 
-function unwrapJsonDescription(raw: string): string {
-  if (!raw.startsWith('{')) return raw
+/** Unescape a JSON string fragment (fallback when full JSON.parse fails). */
+function unescapeJsonStringFragment(text: string): string {
+  return text
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+}
+
+/**
+ * SAM noticedesc often returns {"description":"..."} JSON. Extract inner text
+ * for display and before HTML stripping on fetch.
+ */
+export function extractDescriptionFromSamPayload(content: string): string {
+  const trimmed = content.trim()
+  if (!trimmed.startsWith('{')) return trimmed
+
   try {
-    const parsed = JSON.parse(raw) as unknown
+    const parsed = JSON.parse(trimmed) as unknown
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       const inner = asTrimmedString((parsed as Record<string, unknown>).description)
       if (inner) return inner
     }
   } catch {
-    // keep raw string
+    // malformed JSON — try loose extraction below
   }
-  return raw
+
+  const loose = trimmed.match(/^\s*\{\s*"description"\s*:\s*"([\s\S]*?)"\s*\}\s*$/)
+  if (loose?.[1]) {
+    return unescapeJsonStringFragment(loose[1])
+  }
+
+  return trimmed
+}
+
+function unwrapJsonDescription(raw: string): string {
+  return extractDescriptionFromSamPayload(raw)
+}
+
+/** Stored JSON blob from noticedesc — allow re-fetch to replace with plain text. */
+export function isSamDescriptionJsonBlob(desc: string): boolean {
+  const stripped = desc.trim()
+  return stripped.startsWith('{"description"') || stripped.startsWith('{ "description"')
 }
 
 const NAMED_ENTITIES: Record<string, string> = {
@@ -82,11 +114,19 @@ function capLength(text: string): string {
  * Extract SAM.gov solicitation description from opportunities.extra.
  * Returns null when extra has no description field at all (hide panel).
  */
+function descriptionFieldToString(value: unknown): string | null {
+  if (typeof value === 'string') return asTrimmedString(value)
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return asTrimmedString((value as Record<string, unknown>).description)
+  }
+  return null
+}
+
 export function extractSamDescription(extra: unknown): SamDescriptionView | null {
   const record = toRecord(extra)
   if (!record) return null
 
-  const raw = asTrimmedString(record.description)
+  const raw = descriptionFieldToString(record.description)
   if (!raw) return { kind: 'empty' }
 
   if (raw === 'not_available') {

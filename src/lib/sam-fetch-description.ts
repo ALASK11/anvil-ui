@@ -1,4 +1,8 @@
-import { stripSamHtml } from './sam-description'
+import {
+  extractDescriptionFromSamPayload,
+  isSamDescriptionJsonBlob,
+  stripSamHtml,
+} from './sam-description'
 
 const SAM_SEARCH = 'https://api.sam.gov/opportunities/v2/search'
 const REQUEST_DELAY_MS = 1100
@@ -69,7 +73,8 @@ export async function fetchDescriptionText(
   const content = (await resp.text()).trim()
   if (!content) return null
 
-  const clean = stripSamHtml(content)
+  const payload = extractDescriptionFromSamPayload(content)
+  const clean = stripSamHtml(payload)
   if (clean.length <= 10) return null
   return { text: clean }
 }
@@ -99,7 +104,8 @@ function extractDescUrlFromSearchPayload(data: unknown): string | null {
 
   if (!descUrl) return null
   if (!descUrl.startsWith('http')) {
-    const clean = stripSamHtml(descUrl)
+    const payload = extractDescriptionFromSamPayload(descUrl)
+    const clean = stripSamHtml(payload)
     return clean.length > 10 ? `__inline__:${clean}` : null
   }
   return descUrl
@@ -159,5 +165,7 @@ export function isEnrichedSamDescription(desc: unknown): boolean {
   if (typeof desc !== 'string') return false
   const stripped = desc.trim()
   if (!stripped || stripped === 'not_available') return stripped === 'not_available'
-  return !stripped.startsWith('https://')
+  if (stripped.startsWith('https://')) return false
+  if (isSamDescriptionJsonBlob(stripped)) return false
+  return true
 }
