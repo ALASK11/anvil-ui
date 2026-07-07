@@ -104,21 +104,32 @@ const textarea: CSSProperties = {
   resize: 'vertical',
 }
 
+function isDocx(filename: string | null): boolean {
+  return !!filename && filename.toLowerCase().endsWith('.docx')
+}
+
 export function PdfParseTool({ opportunityId, documents, defaultPreamble }: Props) {
   const [open, setOpen] = useState(false)
   const [pageRanges, setPageRanges] = useState<Record<string, string>>({})
+  const [docxSelected, setDocxSelected] = useState<Record<string, boolean>>({})
   const [preamble, setPreamble] = useState(defaultPreamble ?? DEFAULT_PREAMBLE)
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [response, setResponse] = useState<unknown>(null)
   const [error, setError] = useState('')
 
-  const selectedDocs = useMemo(
-    () =>
-      Object.entries(pageRanges)
-        .filter(([, range]) => range.trim() !== '')
-        .map(([docId, range]) => ({ document_id: docId, page_ranges: range.trim() })),
-    [pageRanges],
-  )
+  const selectedDocs = useMemo(() => {
+    type Selection = { document_id: string; page_ranges?: string }
+    const out: Selection[] = []
+    for (const d of documents) {
+      if (isDocx(d.filename)) {
+        if (docxSelected[d.id]) out.push({ document_id: d.id })
+      } else {
+        const range = pageRanges[d.id]?.trim()
+        if (range) out.push({ document_id: d.id, page_ranges: range })
+      }
+    }
+    return out
+  }, [documents, pageRanges, docxSelected])
 
   async function runParse() {
     if (selectedDocs.length === 0) return
@@ -171,42 +182,85 @@ export function PdfParseTool({ opportunityId, documents, defaultPreamble }: Prop
           ) : (
             <div>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                Enter page ranges per document (e.g. <code>1-3, 5, 7-10</code>). Leave blank to skip.
+                PDFs: enter page ranges (e.g. <code>1-3, 5, 7-10</code>). DOCX: tick the
+                checkbox to include the entire document. Leave blank/unchecked to skip.
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                {documents.map((d) => (
-                  <div
-                    key={d.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '0.75rem',
-                    }}
-                  >
-                    <span
+                {documents.map((d) => {
+                  const docx = isDocx(d.filename)
+                  return (
+                    <div
+                      key={d.id}
                       style={{
-                        fontSize: '0.85rem',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '0.75rem',
                       }}
-                      title={d.filename ?? undefined}
                     >
-                      {d.filename ?? 'document'}
-                    </span>
-                    <input
-                      type="text"
-                      style={inputStyle}
-                      placeholder="e.g. 1-3, 5"
-                      value={pageRanges[d.id] ?? ''}
-                      onChange={(e) =>
-                        setPageRanges((prev) => ({ ...prev, [d.id]: e.target.value }))
-                      }
-                    />
-                  </div>
-                ))}
+                      <span
+                        style={{
+                          fontSize: '0.85rem',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          flex: 1,
+                        }}
+                        title={d.filename ?? undefined}
+                      >
+                        {d.filename ?? 'document'}
+                        {docx && (
+                          <span
+                            style={{
+                              marginLeft: '0.4rem',
+                              fontSize: '0.7rem',
+                              color: 'var(--text-muted)',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.03em',
+                            }}
+                          >
+                            docx
+                          </span>
+                        )}
+                      </span>
+                      {docx ? (
+                        <label
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            fontSize: '0.8rem',
+                            color: 'var(--text-muted)',
+                            cursor: 'pointer',
+                            width: '14rem',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!docxSelected[d.id]}
+                            onChange={(e) =>
+                              setDocxSelected((prev) => ({
+                                ...prev,
+                                [d.id]: e.target.checked,
+                              }))
+                            }
+                          />
+                          Include entire document
+                        </label>
+                      ) : (
+                        <input
+                          type="text"
+                          style={inputStyle}
+                          placeholder="e.g. 1-3, 5"
+                          value={pageRanges[d.id] ?? ''}
+                          onChange={(e) =>
+                            setPageRanges((prev) => ({ ...prev, [d.id]: e.target.value }))
+                          }
+                        />
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -242,7 +296,7 @@ export function PdfParseTool({ opportunityId, documents, defaultPreamble }: Prop
             </button>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               {selectedDocs.length === 0
-                ? 'enter page ranges to enable'
+                ? 'select at least one document to enable'
                 : `${selectedDocs.length} document${selectedDocs.length === 1 ? '' : 's'} selected`}
             </span>
             {status === 'error' && (

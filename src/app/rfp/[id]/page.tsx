@@ -15,6 +15,7 @@ import {
 } from '@/lib/db/queries/sourcing'
 import { planetbidsLinks, samGovDetailUrl } from '@/lib/opportunity-links'
 import { OpportunityLabels } from '@/components/OpportunityLabels'
+import { StarToggle } from '@/components/StarToggle'
 import { SamDescriptionPanel } from '@/components/SamDescriptionPanel'
 import { ParsedJsonPanel } from '@/components/ParsedJsonPanel'
 import { PdfParseTool } from '@/components/PdfParseTool'
@@ -41,9 +42,12 @@ function formatDate(d: Date | null): string {
   return new Date(d).toISOString().slice(0, 10)
 }
 
-function isPdfLike(filename: string | null): boolean {
+// Documents served by /api/doc render inline in an iframe. PDFs stream
+// natively; DOCX is converted to HTML by the proxy so it renders the same
+// way. Anything else falls back to the "open in new tab" placeholder.
+function isInlineViewable(filename: string | null): boolean {
   if (!filename) return false
-  return /\.pdf$/i.test(filename)
+  return /\.(pdf|docx)$/i.test(filename)
 }
 
 interface PageProps {
@@ -97,9 +101,12 @@ export default async function BidDetailPage({ params }: PageProps) {
   return (
     <>
       <div className="page-header">
-        <Link href="/rfp" style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>
-          ← Back to RFPs
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <StarToggle opportunityId={opp.id} initialStarred={opp.is_starred === true} />
+          <Link href="/rfp" style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>
+            ← Back to RFPs
+          </Link>
+        </div>
         <h1 style={{ marginTop: '0.5rem' }}>{opp.title ?? 'Untitled opportunity'}</h1>
         <p style={{ color: 'var(--text-muted)' }}>
           {opp.agency ?? '—'}
@@ -289,7 +296,7 @@ export default async function BidDetailPage({ params }: PageProps) {
                       open in new tab
                     </a>
                   </div>
-                  {isPdfLike(d.filename) ? (
+                  {isInlineViewable(d.filename) ? (
                     <iframe
                       src={proxyUrl}
                       title={d.filename ?? 'document'}
@@ -313,7 +320,7 @@ export default async function BidDetailPage({ params }: PageProps) {
                         fontSize: '0.85rem',
                       }}
                     >
-                      Non-PDF document — use &quot;open in new tab&quot; to view.
+                      Unsupported document type — use &quot;open in new tab&quot; to view.
                     </div>
                   )}
                 </div>

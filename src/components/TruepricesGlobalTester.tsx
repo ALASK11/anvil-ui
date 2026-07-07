@@ -1,14 +1,13 @@
 'use client'
 
-import { useState, type CSSProperties } from 'react'
-import { extractCandidates, type TruepricesCandidate } from '@/lib/trueprices-parse'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { type TruepricesCandidate } from '@/lib/trueprices-parse'
 
-const triggerButton: CSSProperties = {
+const triggerButtonBase: CSSProperties = {
   display: 'block',
   width: 'calc(100% - 2rem)',
   margin: '0 1rem 1rem',
   padding: '0.5rem 0.75rem',
-  background: 'var(--accent)',
   color: 'white',
   border: 'none',
   borderRadius: 6,
@@ -17,6 +16,18 @@ const triggerButton: CSSProperties = {
   cursor: 'pointer',
   textAlign: 'center',
   letterSpacing: '0.01em',
+  transition: 'background 120ms ease',
+}
+
+const spinnerStyle: CSSProperties = {
+  display: 'inline-block',
+  width: 14,
+  height: 14,
+  border: '2px solid var(--border)',
+  borderTopColor: 'var(--accent)',
+  borderRadius: '50%',
+  animation: 'tp-spin 0.8s linear infinite',
+  verticalAlign: 'middle',
 }
 
 const overlay: CSSProperties = {
@@ -84,12 +95,28 @@ export function TruepricesGlobalTester() {
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [candidates, setCandidates] = useState<TruepricesCandidate[]>([])
   const [error, setError] = useState('')
+  // Turns the sidebar trigger green when a search finishes while the modal
+  // is dismissed. Cleared on the next open so re-opening = back to blue.
+  const [hasFreshResult, setHasFreshResult] = useState(false)
+  // Track whether the modal is open *at the moment the fetch settles* — the
+  // fetch may resolve long after the closure captured `open`, so use a ref
+  // instead of the captured value.
+  const openRef = useRef(open)
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
+
+  function openModal() {
+    setOpen(true)
+    setHasFreshResult(false)
+  }
 
   async function runSearch() {
     if (!query.trim()) return
     setStatus('loading')
     setError('')
     setCandidates([])
+    setHasFreshResult(false)
     try {
       const res = await fetch(`/api/trueprices/search?query=${encodeURIComponent(query)}`, {
         method: 'GET',
@@ -99,21 +126,59 @@ export function TruepricesGlobalTester() {
       if (!res.ok) {
         setStatus('error')
         setError(typeof data?.message === 'string' ? data.message : `HTTP ${res.status}`)
+        if (!openRef.current) setHasFreshResult(true)
         return
       }
-      const parsed = extractCandidates(data)
+      const parsed: TruepricesCandidate[] = Array.isArray(data?.candidates)
+        ? data.candidates
+        : []
       setCandidates(parsed)
       setStatus('done')
+      if (!openRef.current) setHasFreshResult(true)
     } catch (e) {
       setStatus('error')
       setError(e instanceof Error ? e.message : 'Network error')
+      if (!openRef.current) setHasFreshResult(true)
     }
   }
 
+  const isWorking = status === 'loading'
+  const triggerBackground = hasFreshResult ? 'var(--green)' : 'var(--accent)'
+  const triggerLabel = isWorking
+    ? 'Searching TruePrices…'
+    : hasFreshResult
+      ? 'TruePrices results ready'
+      : 'Source with TruePrices'
+
   return (
     <>
-      <button type="button" style={triggerButton} onClick={() => setOpen(true)}>
-        Source with TruePrices
+      <style>{`@keyframes tp-spin { to { transform: rotate(360deg); } }`}</style>
+      <button
+        type="button"
+        style={{ ...triggerButtonBase, background: triggerBackground }}
+        onClick={openModal}
+      >
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.4rem',
+          }}
+        >
+          {isWorking && (
+            <span
+              style={{
+                ...spinnerStyle,
+                width: 12,
+                height: 12,
+                border: '2px solid rgba(255,255,255,0.35)',
+                borderTopColor: 'white',
+              }}
+            />
+          )}
+          {triggerLabel}
+        </span>
       </button>
 
       {open && (
@@ -165,10 +230,24 @@ export function TruepricesGlobalTester() {
                   opacity: status === 'loading' || !query.trim() ? 0.6 : 1,
                   cursor:
                     status === 'loading' || !query.trim() ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
                 }}
                 onClick={runSearch}
                 disabled={status === 'loading' || !query.trim()}
               >
+                {status === 'loading' && (
+                  <span
+                    style={{
+                      ...spinnerStyle,
+                      width: 12,
+                      height: 12,
+                      border: '2px solid rgba(255,255,255,0.35)',
+                      borderTopColor: 'white',
+                    }}
+                  />
+                )}
                 {status === 'loading' ? 'searching…' : 'Search'}
               </button>
             </div>
@@ -186,8 +265,22 @@ export function TruepricesGlobalTester() {
                 </div>
               )}
               {status === 'loading' && (
-                <div style={{ padding: '1.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  Calling TruePrices…
+                <div
+                  style={{
+                    padding: '1.5rem',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                  }}
+                >
+                  <span style={spinnerStyle} />
+                  <span>
+                    Calling TruePrices… (search + offers polling, ~5–15s). You can
+                    dismiss this window — the search keeps running and the sidebar
+                    button will turn green when results are ready.
+                  </span>
                 </div>
               )}
               {status === 'error' && (
@@ -248,7 +341,7 @@ export function TruepricesGlobalTester() {
                           {c.sku ?? '—'}
                         </td>
                         <td>{formatCents(c.price_cents)}</td>
-                        <td style={{ color: 'var(--text-muted)' }}>—</td>
+                        <td>{formatCents(c.landed_cents)}</td>
                       </tr>
                     ))}
                   </tbody>

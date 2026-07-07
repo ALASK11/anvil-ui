@@ -32,6 +32,7 @@ export default async function RFPPage(props: PageProps) {
   const hideServices = flag('has_services_in_name')
   const starredOnly = flag('starred')
   const recent5d = flag('recent_5d')
+  const hasHumanSourced = flag('human_sourced')
 
   const sourceRaw = searchParams.source
   const sourceValue = Array.isArray(sourceRaw) ? sourceRaw[0] : sourceRaw
@@ -56,6 +57,7 @@ export default async function RFPPage(props: PageProps) {
     hideServices ||
     starredOnly ||
     recent5d ||
+    hasHumanSourced ||
     source !== null ||
     (source === 'sam_gov' && agencyContains !== null)
 
@@ -68,6 +70,7 @@ export default async function RFPPage(props: PageProps) {
       hideServices,
       starredOnly,
       recent5d,
+      hasHumanSourced,
       source,
       agencyContains,
     }),
@@ -79,6 +82,7 @@ export default async function RFPPage(props: PageProps) {
           hideServices,
           starredOnly,
           recent5d,
+          hasHumanSourced,
           source,
           agencyContains,
         })
@@ -97,6 +101,7 @@ export default async function RFPPage(props: PageProps) {
     hideServices: boolean
     starredOnly: boolean
     recent5d: boolean
+    hasHumanSourced: boolean
     source: string | null
     agencyContains: string | null
   }
@@ -107,6 +112,7 @@ export default async function RFPPage(props: PageProps) {
     hideServices,
     starredOnly,
     recent5d,
+    hasHumanSourced,
     source,
     agencyContains,
   }
@@ -118,6 +124,7 @@ export default async function RFPPage(props: PageProps) {
     if (next.hideServices) sp.set('has_services_in_name', 'true')
     if (next.starredOnly) sp.set('starred', 'true')
     if (next.recent5d) sp.set('recent_5d', 'true')
+    if (next.hasHumanSourced) sp.set('human_sourced', 'true')
     if (next.source) sp.set('source', next.source)
     // Only carry agency through when SAM is (still) the source.
     if (next.source === 'sam_gov' && next.agencyContains) sp.set('agency', next.agencyContains)
@@ -187,6 +194,13 @@ export default async function RFPPage(props: PageProps) {
         >
           <span className="filter-chip-dot" />
           Found in last 5 days
+        </Link>
+        <Link
+          href={filterUrl({ ...currentFilters, hasHumanSourced: !hasHumanSourced })}
+          className={`filter-chip${hasHumanSourced ? ' active' : ''}`}
+        >
+          <span className="filter-chip-dot" />
+          Has human sourcing
         </Link>
         <span
           className="filter-bar-label"

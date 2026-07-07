@@ -10,6 +10,7 @@ interface FilterFlags {
   parsedOnly?: boolean
   hasClin?: boolean
   withoutClin?: boolean
+  hasHumanSourced?: boolean
   discoveredYesterday?: boolean
   source?: string | null            // exact match on opportunities.source
   agencyContains?: string | null    // ILIKE match on opportunities.agency (SAM only)
@@ -57,6 +58,11 @@ function buildOpportunityFilter(flags: FilterFlags): FilterBuild {
   if (flags.withoutClin) {
     conditions.push(
       `NOT EXISTS (SELECT 1 FROM clin_items ci WHERE ci.opportunity_id = o.id)`,
+    )
+  }
+  if (flags.hasHumanSourced) {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM sourcing_results_human srh WHERE srh.opportunity_id = o.id)`,
     )
   }
   if (flags.discoveredYesterday) {
@@ -170,6 +176,7 @@ export interface OpportunityDetail {
   set_aside_type: string | null
   is_product: boolean | null
   commentary: string | null
+  is_starred: boolean | null
   extra: unknown
 }
 
@@ -180,7 +187,7 @@ export async function getOpportunity(id: string): Promise<OpportunityDetail | nu
             source, source_id, posted_date, response_deadline,
             stage, status, estimated_value_min, estimated_value_max,
             place_of_performance, naics_code, set_aside_type,
-            is_product, commentary, extra
+            is_product, commentary, is_starred, extra
      FROM opportunities
      WHERE id = $1`,
     [id],

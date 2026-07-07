@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { Storage } from '@google-cloud/storage'
+import mammoth from 'mammoth'
 import { PDFDocument } from 'pdf-lib'
 import { getPool } from '@/lib/db/pool'
 import { parseGcsUrl } from '@/lib/gcs'
@@ -8,9 +9,16 @@ import { parseGcsUrl } from '@/lib/gcs'
 /**
  * POST /api/parse-pdfs
  *
- * Slices the requested page ranges out of each opportunity_documents PDF,
- * sends them to Gemini with the user-supplied preamble, and returns the
- * model's JSON output (or the raw text + error if parsing fails).
+ * Sends selected opportunity_documents attachments to Gemini with the
+ * user-supplied preamble and returns the model's JSON output.
+ *
+ * PDFs: sliced to the requested page ranges via pdf-lib, sent as inlineData.
+ * DOCX: converted to plain text with mammoth and sent as a text part
+ *       (Gemini does not accept Word docs as inlineData).
+ *
+ * The route name is preserved for backwards compatibility with the existing
+ * client; despite the "pdfs" in the path it accepts a mix of both formats
+ * in a single request.
  *
  * Required env vars:
  *   GEMINI_API_KEY — Google AI Studio key with Gemini access.
@@ -21,10 +29,11 @@ import { parseGcsUrl } from '@/lib/gcs'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DEFAULT_MODEL = 'gemini-2.5-flash'
+const DOCX_MAX_TEXT_CHARS = 200_000 // Guard against huge Word docs blowing the prompt.
 
 interface Body {
   opportunity_id: string
-  documents: Array<{ document_id: string; page_ranges: string }>
+  documents: Array<{ document_id: string; page_ranges?: string }>
   preamble: string
 }
 
@@ -68,6 +77,21 @@ interface SlicedPdf {
   kept_pages: number[]
   skipped_pages: number[]
   total_in_source: number
+}
+
+async function fetchAndExtractDocx(gcsUrl: string): Promise<{ text: string; chars: number; truncated: boolean }> {
+  const parsed = parseGcsUrl(gcsUrl)
+  if (!parsed) throw new Error(`Invalid GCS URL: ${gcsUrl}`)
+  const [buf] = await getStorage().bucket(parsed.bucket).file(parsed.object).download()
+  const { value } = await mammoth.extractRawText({ buffer: buf })
+  const trimmed = value.trim()
+  if (trimmed.length === 0) throw new Error(`DOCX contained no extractable text: ${parsed.object}`)
+  const truncated = trimmed.length > DOCX_MAX_TEXT_CHARS
+  return {
+    text: truncated ? trimmed.slice(0, DOCX_MAX_TEXT_CHARS) : trimmed,
+    chars: trimmed.length,
+    truncated,
+  }
 }
 
 async function fetchAndSlicePdf(gcsUrl: string, requestedPages: number[]): Promise<SlicedPdf> {
@@ -150,11 +174,6 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: false, message: 'preamble required (string)' }, { status: 400 })
   }
 
-  const expanded: Array<{
-    document_id: string
-    page_ranges_raw: string
-    page_ranges_expanded: number[]
-  }> = []
   for (const d of body.documents) {
     if (!d.document_id || !UUID_RE.test(d.document_id)) {
       return NextResponse.json(
@@ -162,6 +181,64 @@ export async function POST(req: Request): Promise<NextResponse> {
         { status: 400 },
       )
     }
+  }
+
+  // Look up doc metadata FIRST so we know each doc's format before validating
+  // its page_ranges (DOCX docs don't have pages to slice).
+  const pool = await getPool()
+  const { rows: docRows } = await pool.query<{
+    id: string
+    filename: string | null
+    gcs_url: string | null
+  }>(
+    `SELECT id, filename, gcs_url
+     FROM opportunity_documents
+     WHERE opportunity_id = $1
+       AND id = ANY($2::uuid[])
+       AND recalled_at IS NULL
+       AND superseded_by IS NULL`,
+    [body.opportunity_id, body.documents.map((d) => d.document_id)],
+  )
+  const docMap = new Map(docRows.map((r) => [r.id, r]))
+
+  interface PdfInput {
+    kind: 'pdf'
+    document_id: string
+    filename: string | null
+    gcs_url: string
+    page_ranges_raw: string
+    page_ranges_expanded: number[]
+  }
+  interface DocxInput {
+    kind: 'docx'
+    document_id: string
+    filename: string | null
+    gcs_url: string
+  }
+  type DocInput = PdfInput | DocxInput
+
+  const inputs: DocInput[] = []
+  for (const d of body.documents) {
+    const meta = docMap.get(d.document_id)
+    if (!meta || !meta.gcs_url) {
+      return NextResponse.json(
+        { ok: false, message: `document not found for this opportunity: ${d.document_id}` },
+        { status: 400 },
+      )
+    }
+    const filenameLower = (meta.filename ?? '').toLowerCase()
+    const isDocx = filenameLower.endsWith('.docx')
+    if (isDocx) {
+      inputs.push({
+        kind: 'docx',
+        document_id: d.document_id,
+        filename: meta.filename,
+        gcs_url: meta.gcs_url,
+      })
+      continue
+    }
+    // PDF (or unknown-type — fall through to PDF slicer for parity with the
+    // pre-DOCX behavior).
     if (typeof d.page_ranges !== 'string' || !d.page_ranges.trim()) {
       return NextResponse.json(
         { ok: false, message: `page_ranges required for document ${d.document_id}` },
@@ -183,67 +260,50 @@ export async function POST(req: Request): Promise<NextResponse> {
         { status: 400 },
       )
     }
-    expanded.push({
+    inputs.push({
+      kind: 'pdf',
       document_id: d.document_id,
+      filename: meta.filename,
+      gcs_url: meta.gcs_url,
       page_ranges_raw: d.page_ranges.trim(),
       page_ranges_expanded: pages,
     })
   }
 
-  // Look up doc metadata to confirm they belong to this opp.
-  const pool = await getPool()
-  const { rows: docRows } = await pool.query<{
-    id: string
-    filename: string | null
-    gcs_url: string | null
-  }>(
-    `SELECT id, filename, gcs_url
-     FROM opportunity_documents
-     WHERE opportunity_id = $1
-       AND id = ANY($2::uuid[])
-       AND recalled_at IS NULL
-       AND superseded_by IS NULL`,
-    [body.opportunity_id, expanded.map((e) => e.document_id)],
-  )
-  const docMap = new Map(docRows.map((r) => [r.id, r]))
-
-  const docInputs = expanded.map((e) => {
-    const meta = docMap.get(e.document_id)
-    return {
-      document_id: e.document_id,
-      filename: meta?.filename ?? null,
-      gcs_url: meta?.gcs_url ?? null,
-      page_ranges_raw: e.page_ranges_raw,
-      page_ranges_expanded: e.page_ranges_expanded,
-    }
-  })
-
-  const missing = docInputs.filter((d) => d.gcs_url == null).map((d) => d.document_id)
-  if (missing.length > 0) {
-    return NextResponse.json(
-      { ok: false, message: `documents not found for this opportunity: ${missing.join(', ')}` },
-      { status: 400 },
-    )
+  interface Processed {
+    input: DocInput
+    slice?: SlicedPdf
+    docx_text?: string
+    docx_chars?: number
+    docx_truncated?: boolean
   }
 
-  // Fetch + slice PDFs in parallel.
-  let slices: SlicedPdf[]
+  let processed: Processed[]
   try {
-    slices = await Promise.all(
-      docInputs.map((d) => fetchAndSlicePdf(d.gcs_url!, d.page_ranges_expanded)),
+    processed = await Promise.all(
+      inputs.map(async (input): Promise<Processed> => {
+        if (input.kind === 'pdf') {
+          const slice = await fetchAndSlicePdf(input.gcs_url, input.page_ranges_expanded)
+          return { input, slice }
+        }
+        const extracted = await fetchAndExtractDocx(input.gcs_url)
+        return {
+          input,
+          docx_text: extracted.text,
+          docx_chars: extracted.chars,
+          docx_truncated: extracted.truncated,
+        }
+      }),
     )
   } catch (e) {
     return NextResponse.json(
-      { ok: false, message: e instanceof Error ? e.message : 'PDF slicing failed' },
+      { ok: false, message: e instanceof Error ? e.message : 'Document processing failed' },
       { status: 502 },
     )
   }
 
-  const totalPagesKept = slices.reduce((sum, s) => sum + s.kept_pages.length, 0)
   const modelName = process.env.GEMINI_MODEL ?? DEFAULT_MODEL
 
-  // Build the Gemini request: preamble first (instructions + schema), then
-  // every sliced PDF as an inlineData part.
   const model = getGemini(apiKey).getGenerativeModel({
     model: modelName,
     generationConfig: {
@@ -252,18 +312,34 @@ export async function POST(req: Request): Promise<NextResponse> {
     },
   })
 
+  // Build the Gemini request: preamble first (instructions + schema), then
+  // one part per doc — PDFs as inlineData, DOCX text inlined as text parts
+  // with a header line so the model can attribute content back to a file.
+  type DocPart =
+    | { inlineData: { mimeType: string; data: string } }
+    | { text: string }
+  const docParts: DocPart[] = []
+  for (const p of processed) {
+    if (p.input.kind === 'pdf' && p.slice) {
+      docParts.push({ inlineData: { mimeType: 'application/pdf', data: p.slice.base64 } })
+    } else if (p.input.kind === 'docx' && p.docx_text != null) {
+      const label = p.input.filename ?? 'document.docx'
+      const truncationNote = p.docx_truncated
+        ? `\n[NOTE: content truncated to ${DOCX_MAX_TEXT_CHARS} characters]`
+        : ''
+      docParts.push({
+        text: `\n\n--- BEGIN DOCX: ${label} ---${truncationNote}\n${p.docx_text}\n--- END DOCX: ${label} ---\n`,
+      })
+    }
+  }
+
   let responseText: string
   try {
     const result = await model.generateContent({
       contents: [
         {
           role: 'user',
-          parts: [
-            { text: body.preamble },
-            ...slices.map((s) => ({
-              inlineData: { mimeType: 'application/pdf', data: s.base64 },
-            })),
-          ],
+          parts: [{ text: body.preamble }, ...docParts],
         },
       ],
     })
@@ -275,23 +351,45 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const { parsed, raw } = extractJson(responseText)
 
+  const totalPagesKept = processed.reduce(
+    (sum, p) => sum + (p.slice?.kept_pages.length ?? 0),
+    0,
+  )
+  const totalDocxChars = processed.reduce((sum, p) => sum + (p.docx_chars ?? 0), 0)
+
   return NextResponse.json({
     ok: true,
-    message: `Parsed ${docInputs.length} document(s), ${totalPagesKept} page(s) with ${modelName}.`,
+    message: `Parsed ${processed.length} document(s) with ${modelName} (${totalPagesKept} PDF page(s), ${totalDocxChars} DOCX char(s)).`,
     model: modelName,
     result: parsed,
     raw_response: parsed == null ? raw : undefined,
     request_summary: {
       opportunity_id: body.opportunity_id,
       preamble_chars: body.preamble.length,
-      documents: docInputs.map((d, i) => ({
-        ...d,
-        gcs_url: undefined,
-        kept_pages: slices[i].kept_pages,
-        skipped_pages: slices[i].skipped_pages,
-        total_in_source: slices[i].total_in_source,
-      })),
+      documents: processed.map((p) => {
+        const base = {
+          document_id: p.input.document_id,
+          filename: p.input.filename,
+          kind: p.input.kind,
+        }
+        if (p.input.kind === 'pdf' && p.slice) {
+          return {
+            ...base,
+            page_ranges_raw: p.input.page_ranges_raw,
+            page_ranges_expanded: p.input.page_ranges_expanded,
+            kept_pages: p.slice.kept_pages,
+            skipped_pages: p.slice.skipped_pages,
+            total_in_source: p.slice.total_in_source,
+          }
+        }
+        return {
+          ...base,
+          docx_chars: p.docx_chars ?? 0,
+          docx_truncated: p.docx_truncated ?? false,
+        }
+      }),
       total_pages_sent: totalPagesKept,
+      total_docx_chars_sent: totalDocxChars,
     },
   })
 }
