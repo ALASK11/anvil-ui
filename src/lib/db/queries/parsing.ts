@@ -61,7 +61,7 @@ export async function listClinItems(limit = 50, offset = 0): Promise<ClinItemRow
       o.commentary   AS opp_commentary
     FROM clin_items ci
     LEFT JOIN opportunities o ON o.id = ci.opportunity_id
-    ORDER BY ci.created_at DESC NULLS LAST
+    ORDER BY ci.created_at DESC NULLS LAST, ci.id ASC
     LIMIT $1 OFFSET $2
     `,
     [limit, offset],

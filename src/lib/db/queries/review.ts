@@ -61,7 +61,8 @@ export async function listReviewQueue(limit = 50, offset = 0): Promise<ReviewRow
     ORDER BY
       (bo.decision IS NULL) DESC,
       o.response_deadline ASC NULLS LAST,
-      bo.scored_at DESC NULLS LAST
+      bo.scored_at DESC NULLS LAST,
+      bo.id ASC
     LIMIT $1 OFFSET $2
     `,
     [limit, offset],

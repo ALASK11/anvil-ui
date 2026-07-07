@@ -40,6 +40,7 @@ When a question references a DB table, column, pipeline stage, or upstream servi
 - **JSONB columns may be double-encoded** in some rows (e.g. `suppliers.category_focus`, possibly others). Use defensive parsing — try `JSON.parse` if value comes back as a string. See `src/lib/opportunity-links.ts:toRecord` for the pattern.
 - **Document streaming** uses the `/api/doc?id=<uuid>` proxy, not signed URLs. The proxy looks up the doc by UUID and streams from GCS using the server-side identity.
 - **Source-specific outbound links** live in `src/lib/opportunity-links.ts` — add a new `*Links()` function alongside `planetbidsLinks()` when adding sam.gov / bidnet / etc.
+- **Every `ORDER BY` that feeds pagination MUST include a unique tie-breaker** (typically `<alias>.id ASC`) after the primary sort. Postgres does not guarantee stable ordering under `LIMIT/OFFSET` when the sort key has ties (`posted_date`, `created_at`, `sourced_at`, `fit_score`, etc. are all non-unique), so the same row can appear on multiple pages. Non-paginated queries should follow the same convention for cross-request consistency.
 
 ## GCP infra (production, as deployed)
 

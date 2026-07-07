@@ -38,7 +38,7 @@ export async function listSourceStats(): Promise<SourceStats[]> {
       MAX(posted_date) AS latest_posted
     FROM opportunities
     GROUP BY source
-    ORDER BY opp_count DESC
+    ORDER BY opp_count DESC, source ASC
     `,
   )
   return rows
@@ -67,7 +67,7 @@ export async function listRecentScrapes(limit = 25, offset = 0): Promise<RecentS
       raw_storage_url,
       created_at
     FROM opportunities
-    ORDER BY created_at DESC NULLS LAST
+    ORDER BY created_at DESC NULLS LAST, id ASC
     LIMIT $1 OFFSET $2
     `,
     [limit, offset],

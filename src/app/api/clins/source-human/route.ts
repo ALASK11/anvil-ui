@@ -129,7 +129,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           retailer_name: c.seller,
           product_name: c.title,
           sku: c.sku,
-          product_url: c.link,
+          product_url: c.product_url,
           unit_price_cents: c.price_cents,
         }))
 

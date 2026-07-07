@@ -11,10 +11,19 @@ interface FilterFlags {
   hasClin?: boolean
   withoutClin?: boolean
   discoveredYesterday?: boolean
+  source?: string | null            // exact match on opportunities.source
+  agencyContains?: string | null    // ILIKE match on opportunities.agency (SAM only)
 }
 
-function opportunityFilterWhere(flags: FilterFlags): string {
+interface FilterBuild {
+  where: string
+  params: unknown[]
+}
+
+function buildOpportunityFilter(flags: FilterFlags): FilterBuild {
   const conditions: string[] = []
+  const params: unknown[] = []
+
   if (flags.hasDocuments) {
     conditions.push(`EXISTS (
       SELECT 1 FROM opportunity_documents d
@@ -53,7 +62,22 @@ function opportunityFilterWhere(flags: FilterFlags): string {
   if (flags.discoveredYesterday) {
     conditions.push(`o.created_at::date = (CURRENT_DATE - 1)`)
   }
-  return conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+  if (flags.source) {
+    params.push(flags.source)
+    conditions.push(`o.source = $${params.length}`)
+  }
+  // Agency filter only applies to SAM opps (per product decision). Scope so a
+  // stray ?agency=... in the URL without ?source=sam_gov becomes a no-op
+  // rather than silently searching across all sources.
+  if (flags.agencyContains && flags.source === 'sam_gov') {
+    params.push(`%${flags.agencyContains}%`)
+    conditions.push(`o.agency ILIKE $${params.length}`)
+  }
+
+  return {
+    where: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
+    params,
+  }
 }
 
 export interface ListOpportunitiesOptions extends FilterFlags {
@@ -66,7 +90,9 @@ export async function listOpportunities(
 ): Promise<OpportunityListRow[]> {
   const { limit = 100, offset = 0, ...flags } = options
   const pool = await getPool()
-  const whereClause = opportunityFilterWhere(flags)
+  const { where, params } = buildOpportunityFilter(flags)
+  const limitIdx = params.length + 1
+  const offsetIdx = params.length + 2
   const { rows } = await pool.query<OpportunityListRow>(
     `
     SELECT
@@ -83,22 +109,39 @@ export async function listOpportunities(
       (SELECT COUNT(*)::int FROM clin_items       WHERE opportunity_id = o.id) AS product_count,
       (SELECT COUNT(*)::int FROM sourcing_results WHERE opportunity_id = o.id) AS bid_count
     FROM opportunities o
-    ${whereClause}
-    ORDER BY o.posted_date DESC NULLS LAST
-    LIMIT $1 OFFSET $2
+    ${where}
+    ORDER BY o.posted_date DESC NULLS LAST, o.id ASC
+    LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `,
-    [limit, offset],
+    [...params, limit, offset],
   )
   return rows
 }
 
 export async function countOpportunities(options: FilterFlags = {}): Promise<number> {
   const pool = await getPool()
-  const whereClause = opportunityFilterWhere(options)
+  const { where, params } = buildOpportunityFilter(options)
   const { rows } = await pool.query<{ count: number }>(
-    `SELECT COUNT(*)::int AS count FROM opportunities o ${whereClause}`,
+    `SELECT COUNT(*)::int AS count FROM opportunities o ${where}`,
+    params,
   )
   return rows[0]?.count ?? 0
+}
+
+/**
+ * Distinct SAM agency names for the agency dropdown on /rfp. Cached at the
+ * DB level via a partial index (`ix_opp_source` if it exists) or just a fast
+ * scan on a modest table. Returns sorted asc, nulls dropped.
+ */
+export async function listSamAgencies(): Promise<string[]> {
+  const pool = await getPool()
+  const { rows } = await pool.query<{ agency: string }>(
+    `SELECT DISTINCT agency
+     FROM opportunities
+     WHERE source = 'sam_gov' AND agency IS NOT NULL
+     ORDER BY agency ASC`,
+  )
+  return rows.map((r) => r.agency)
 }
 
 export interface OpportunityKpis {

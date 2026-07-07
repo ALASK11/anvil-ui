@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import './globals.css'
+import { TruepricesGlobalTester } from '@/components/TruepricesGlobalTester'
 
 export const metadata: Metadata = {
   title: 'Anvil — Bidding Pipeline',
@@ -40,6 +41,7 @@ export default function RootLayout({
               <h1>Anvil</h1>
               <span>Bidding Pipeline</span>
             </div>
+            <TruepricesGlobalTester />
             {navItems.map((item, i) => {
               if ('section' in item) {
                 return (

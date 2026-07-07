@@ -57,7 +57,7 @@ export async function listRankings(limit = 50, offset = 0): Promise<RankingRow[]
     FROM bid_outcomes bo
     LEFT JOIN opportunities o ON o.id = bo.opportunity_id
     WHERE bo.fit_score IS NOT NULL
-    ORDER BY bo.fit_score DESC NULLS LAST, bo.scored_at DESC NULLS LAST
+    ORDER BY bo.fit_score DESC NULLS LAST, bo.scored_at DESC NULLS LAST, bo.id ASC
     LIMIT $1 OFFSET $2
     `,
     [limit, offset],

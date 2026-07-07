@@ -67,7 +67,7 @@ export async function listFpdsMarket(limit = 100, offset = 0): Promise<FpdsMarke
         ELSE NULL
       END AS top_awardees_count
     FROM fpds_market
-    ORDER BY fiscal_year DESC NULLS LAST, total_obligations DESC NULLS LAST
+    ORDER BY fiscal_year DESC NULLS LAST, total_obligations DESC NULLS LAST, id ASC
     LIMIT $1 OFFSET $2
     `,
     [limit, offset],

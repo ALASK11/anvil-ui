@@ -94,7 +94,7 @@ export async function listSourcingResults(
     const { rows } = await pool.query<SourcingResultRow>(
       `${SOURCING_RESULTS_SELECT}
        WHERE sr.opportunity_id = $1
-       ORDER BY sr.sourced_at DESC NULLS LAST`,
+       ORDER BY sr.sourced_at DESC NULLS LAST, sr.id ASC`,
       [opportunityId],
     )
     return rows
@@ -102,7 +102,7 @@ export async function listSourcingResults(
 
   const { rows } = await pool.query<SourcingResultRow>(
     `${SOURCING_RESULTS_SELECT}
-     ORDER BY sr.sourced_at DESC NULLS LAST
+     ORDER BY sr.sourced_at DESC NULLS LAST, sr.id ASC
      LIMIT $1 OFFSET $2`,
     [limit, offset],
   )
@@ -187,7 +187,7 @@ export async function listHumanSourcingResultsForOpportunity(
      FROM sourcing_results_human sr
      LEFT JOIN suppliers s ON s.id = sr.supplier_id
      WHERE sr.opportunity_id = $1
-     ORDER BY sr.sourced_at DESC NULLS LAST, sr.created_at DESC`,
+     ORDER BY sr.sourced_at DESC NULLS LAST, sr.created_at DESC, sr.id ASC`,
     [opportunityId],
   )
   return rows

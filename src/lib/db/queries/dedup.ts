@@ -52,7 +52,7 @@ export async function listDuplicateLinks(limit = 50, offset = 0): Promise<Duplic
     FROM duplicate_links dl
     LEFT JOIN opportunities a ON a.id = dl.opportunity_a
     LEFT JOIN opportunities b ON b.id = dl.opportunity_b
-    ORDER BY dl.created_at DESC NULLS LAST
+    ORDER BY dl.created_at DESC NULLS LAST, dl.id ASC
     LIMIT $1 OFFSET $2
     `,
     [limit, offset],

@@ -1,22 +1,20 @@
 /**
- * Trueprices price-comparison API client.
+ * Trueprices price-comparison API client (server-side only).
  *
  * Hits compare.api.chaching.me with the demo-key header. Returns the raw
- * response plus a best-effort flattened list of candidates so callers don't
- * have to know the upstream shape.
+ * response plus the shared `extractCandidates` parse so callers don't have
+ * to know the upstream shape. The candidate type + parser live in
+ * `trueprices-parse.ts` so the client bundle can share them without
+ * pulling in this server module.
  *
  * Required env var: TRUEPRICES_API_KEY
  */
 
-const BASE_URL = 'https://compare.api.chaching.me'
+import { extractCandidates, type TruepricesCandidate } from './trueprices-parse'
 
-export interface TruepricesCandidate {
-  title: string | null
-  price_cents: number | null
-  seller: string | null
-  link: string | null
-  sku: string | null
-}
+export type { TruepricesCandidate } from './trueprices-parse'
+
+const BASE_URL = 'https://compare.api.chaching.me'
 
 export interface TruepricesSearchResult {
   raw: unknown
@@ -69,67 +67,4 @@ function tryParseJson(text: string): unknown | null {
   } catch {
     return null
   }
-}
-
-/**
- * Best-effort extraction. Trueprices' response key has shifted between
- * versions; try common ones in order. If nothing matches we just return [].
- * Callers that need the literal shape should use `raw` instead.
- */
-function extractCandidates(response: unknown): TruepricesCandidate[] {
-  if (!response || typeof response !== 'object') return []
-  const r = response as Record<string, unknown>
-  const list =
-    (r.products as unknown) ??
-    (r.results as unknown) ??
-    (r.hits as unknown) ??
-    (r.data as unknown) ??
-    (r.items as unknown)
-  if (!Array.isArray(list)) return []
-
-  const out: TruepricesCandidate[] = []
-  for (const item of list) {
-    if (!item || typeof item !== 'object') continue
-    const i = item as Record<string, unknown>
-    const merchant = (i.merchant ?? i.seller ?? i.retailer) as
-      | Record<string, unknown>
-      | string
-      | undefined
-
-    const title = pickString(i, ['title', 'name', 'productName'])
-    const price = pickNumber(i, ['price', 'priceUsd', 'minPrice'])
-    const seller =
-      pickString(typeof merchant === 'object' ? merchant : undefined, ['name', 'sellerName']) ??
-      (typeof merchant === 'string' ? merchant : null)
-    const link = pickString(i, ['link', 'url', 'productUrl'])
-    const sku = pickString(i, ['sku', 'id', 'productId'])
-
-    if (price == null) continue
-    out.push({
-      title,
-      price_cents: Math.round(price * 100),
-      seller,
-      link,
-      sku,
-    })
-  }
-  return out
-}
-
-function pickString(obj: Record<string, unknown> | undefined, keys: string[]): string | null {
-  if (!obj) return null
-  for (const k of keys) {
-    const v = obj[k]
-    if (typeof v === 'string' && v.length > 0) return v
-  }
-  return null
-}
-
-function pickNumber(obj: Record<string, unknown> | undefined, keys: string[]): number | null {
-  if (!obj) return null
-  for (const k of keys) {
-    const v = obj[k]
-    if (typeof v === 'number' && Number.isFinite(v)) return v
-  }
-  return null
 }
