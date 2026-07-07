@@ -25,6 +25,7 @@ const navItems = [
   { href: '/market', label: 'Market' },
   { section: 'Admin' },
   { href: '/admin/users', label: 'Users & Access' },
+  { href: '/admin/municipal-registry', label: 'Municipal Registry' },
 ]
 
 export default function RootLayout({
