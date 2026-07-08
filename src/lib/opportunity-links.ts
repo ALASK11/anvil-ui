@@ -30,12 +30,6 @@ export interface PlanetbidsLinks {
 }
 
 /**
- * Build out-bound links to PlanetBids for an opportunity whose source is
- * PlanetBids. Returns null for non-PlanetBids opps or when `extra.detail_url`
- * is missing/malformed. Company portal URL is derived by trimming the
- * /bo/bo-detail/<id> suffix from detail_url.
- */
-/**
  * SAM.gov workspace link from extra.detail_url (set at discovery).
  */
 export function samGovDetailUrl(
