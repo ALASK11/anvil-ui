@@ -49,6 +49,40 @@ export function samGovDetailUrl(
   return detail
 }
 
+export interface MunicipalDirectLinks {
+  detail: string | null
+  listing: string | null
+  state: string | null
+  slug: string | null
+}
+
+function validHttpUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  const url = value.trim()
+  if (!/^https?:\/\//i.test(url)) return null
+  return url
+}
+
+/**
+ * Outbound links for municipal_direct opportunities (city bid detail + listing).
+ */
+export function municipalDirectLinks(
+  opp: Pick<OpportunityDetail, 'source' | 'extra'>,
+): MunicipalDirectLinks | null {
+  if (opp.source !== 'municipal_direct') return null
+  const extra = toRecord(opp.extra)
+  if (!extra) return null
+
+  const detail = validHttpUrl(extra.detail_url)
+  const listing = validHttpUrl(extra.source_url)
+  const state = typeof extra.state === 'string' && extra.state.trim() ? extra.state.trim() : null
+  const slug = typeof extra.slug === 'string' && extra.slug.trim() ? extra.slug.trim() : null
+
+  if (!detail && !listing) return null
+
+  return { detail, listing, state, slug }
+}
+
 export function planetbidsLinks(
   opp: Pick<OpportunityDetail, 'source' | 'extra'>,
 ): PlanetbidsLinks | null {

@@ -13,10 +13,12 @@ import {
   type SourcingResultRow,
   type HumanSourcingResultRow,
 } from '@/lib/db/queries/sourcing'
-import { planetbidsLinks, samGovDetailUrl } from '@/lib/opportunity-links'
+import { municipalDirectLinks, planetbidsLinks, samGovDetailUrl } from '@/lib/opportunity-links'
 import { OpportunityLabels } from '@/components/OpportunityLabels'
 import { StarToggle } from '@/components/StarToggle'
 import { SamDescriptionPanel } from '@/components/SamDescriptionPanel'
+import { MunicipalSourceLinks } from '@/components/MunicipalSourceLinks'
+import { MunicipalDescriptionPanel } from '@/components/MunicipalDescriptionPanel'
 import { ParsedJsonPanel } from '@/components/ParsedJsonPanel'
 import { PdfParseTool } from '@/components/PdfParseTool'
 import {
@@ -78,6 +80,7 @@ export default async function BidDetailPage({ params }: PageProps) {
 
   const pb = planetbidsLinks(opp)
   const samDetail = samGovDetailUrl(opp)
+  const municipal = municipalDirectLinks(opp)
 
   // Group machine sourcing results by clin_item_id so each ClinSection only
   // sees its own candidates.
@@ -110,6 +113,12 @@ export default async function BidDetailPage({ params }: PageProps) {
         <h1 style={{ marginTop: '0.5rem' }}>{opp.title ?? 'Untitled opportunity'}</h1>
         <p style={{ color: 'var(--text-muted)' }}>
           {opp.agency ?? '—'}
+          {municipal?.state && (
+            <>
+              {' · '}
+              {municipal.state}
+            </>
+          )}
           {opp.solicitation_number && (
             <>
               {' · '}
@@ -156,6 +165,7 @@ export default async function BidDetailPage({ params }: PageProps) {
             )}
           </p>
         )}
+        {municipal && <MunicipalSourceLinks links={municipal} />}
       </div>
 
       <OpportunityLabels
@@ -165,6 +175,8 @@ export default async function BidDetailPage({ params }: PageProps) {
       />
 
       <SamDescriptionPanel opportunityId={opp.id} source={opp.source} extra={opp.extra} />
+
+      <MunicipalDescriptionPanel extra={opp.extra} />
 
       {clinItems.length > 0 && (
         <details open style={groupHeaderStyle}>
@@ -263,7 +275,9 @@ export default async function BidDetailPage({ params }: PageProps) {
         <div className="table-header">Documents ({docs.length})</div>
         {docs.length === 0 ? (
           <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-            No documents attached.
+            {municipal && (municipal.detail || municipal.listing)
+              ? 'No PDFs archived — open the city site link above to view bid documents.'
+              : 'No documents attached.'}
           </div>
         ) : (
           <div style={{ padding: '1rem' }}>
