@@ -5,8 +5,26 @@ interface Props {
   links: MunicipalDirectLinks
 }
 
-function normalizeUrl(url: string): string {
-  return url.replace(/\/$/, '')
+interface LinkItem {
+  href: string
+  label: string
+}
+
+function buildLinkItems(links: MunicipalDirectLinks): LinkItem[] {
+  const items: LinkItem[] = []
+
+  if (links.detail) {
+    items.push({ href: links.detail, label: 'View bid on city site' })
+  } else if (links.listing) {
+    items.push({ href: links.listing, label: 'View bid on city site' })
+    return items
+  }
+
+  if (links.detail && links.listing) {
+    items.push({ href: links.listing, label: 'View bid listing' })
+  }
+
+  return items
 }
 
 const calloutStyle: CSSProperties = {
@@ -49,9 +67,7 @@ function ExternalLink({ href, label }: { href: string; label: string }) {
 }
 
 export function MunicipalSourceLinks({ links }: Props) {
-  const showListing =
-    links.listing &&
-    (!links.detail || normalizeUrl(links.listing) !== normalizeUrl(links.detail))
+  const linkItems = buildLinkItems(links)
 
   return (
     <div style={calloutStyle} role="region" aria-label="Municipal bid source links">
@@ -59,15 +75,9 @@ export function MunicipalSourceLinks({ links }: Props) {
         City website
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-        {links.detail && (
-          <ExternalLink href={links.detail} label="View bid on city site" />
-        )}
-        {!links.detail && links.listing && (
-          <ExternalLink href={links.listing} label="View bid listing" />
-        )}
-        {showListing && links.listing && (
-          <ExternalLink href={links.listing} label="View bid listing" />
-        )}
+        {linkItems.map((item) => (
+          <ExternalLink key={`${item.href}:${item.label}`} href={item.href} label={item.label} />
+        ))}
       </div>
     </div>
   )

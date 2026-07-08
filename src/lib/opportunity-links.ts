@@ -30,12 +30,6 @@ export interface PlanetbidsLinks {
 }
 
 /**
- * Build out-bound links to PlanetBids for an opportunity whose source is
- * PlanetBids. Returns null for non-PlanetBids opps or when `extra.detail_url`
- * is missing/malformed. Company portal URL is derived by trimming the
- * /bo/bo-detail/<id> suffix from detail_url.
- */
-/**
  * SAM.gov workspace link from extra.detail_url (set at discovery).
  */
 export function samGovDetailUrl(
@@ -63,6 +57,15 @@ function validHttpUrl(value: unknown): string | null {
   return url
 }
 
+/** Align with backend municipal _normalize_url for detail vs listing equality. */
+export function normalizeMunicipalUrl(url: string): string {
+  return url.trim().replace(/\/$/, '').toLowerCase().split('#')[0]
+}
+
+export function municipalUrlsEquivalent(a: string, b: string): boolean {
+  return normalizeMunicipalUrl(a) === normalizeMunicipalUrl(b)
+}
+
 /**
  * Outbound links for municipal_direct opportunities (city bid detail + listing).
  */
@@ -74,9 +77,13 @@ export function municipalDirectLinks(
   if (!extra) return null
 
   const detail = validHttpUrl(extra.detail_url)
-  const listing = validHttpUrl(extra.source_url)
+  let listing = validHttpUrl(extra.source_url)
   const state = typeof extra.state === 'string' && extra.state.trim() ? extra.state.trim() : null
   const slug = typeof extra.slug === 'string' && extra.slug.trim() ? extra.slug.trim() : null
+
+  if (detail && listing && municipalUrlsEquivalent(detail, listing)) {
+    listing = null
+  }
 
   if (!detail && !listing) return null
 
