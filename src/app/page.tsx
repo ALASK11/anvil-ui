@@ -23,7 +23,7 @@ export default async function DashboardPage(props: PageProps) {
     getPlanetbidsDiscoveryLast7Days(),
     listOpportunities({
       limit: 500,
-      parsedOnly: true,
+      hasParseAttempt: true,
       hasClin: !noClin,
       withoutClin: noClin,
       hideServices: true,

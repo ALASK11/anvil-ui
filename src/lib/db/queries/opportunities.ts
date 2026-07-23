@@ -7,7 +7,12 @@ interface FilterFlags {
   hideServices?: boolean
   starredOnly?: boolean
   recent5d?: boolean
-  parsedOnly?: boolean
+  // opportunities.parsed_at is stamped by the backend parser on every run —
+  // success AND transient failure — so `parsed_at IS NOT NULL` means "the
+  // parser has attempted this opp at least once", not "was parsed
+  // successfully". See backend parser.py: "Mark parsed_at so we don't spin
+  // on transient failures."
+  hasParseAttempt?: boolean
   hasClin?: boolean
   withoutClin?: boolean
   hasHumanSourced?: boolean
@@ -47,7 +52,7 @@ function buildOpportunityFilter(flags: FilterFlags): FilterBuild {
   if (flags.recent5d) {
     conditions.push(`o.created_at >= NOW() - INTERVAL '5 days'`)
   }
-  if (flags.parsedOnly) {
+  if (flags.hasParseAttempt) {
     conditions.push(`o.parsed_at IS NOT NULL`)
   }
   if (flags.hasClin) {
