@@ -39,7 +39,12 @@ function buildOpportunityFilter(flags: FilterFlags): FilterBuild {
     )`)
   }
   if (flags.activeOnly) {
-    conditions.push(`o.status = 'active'`)
+    // "active" means the status flag is set AND the response deadline has
+    // not passed. NULL response_deadline is kept in the list (unknown
+    // deadline is not treated as closed).
+    conditions.push(
+      `o.status = 'active' AND (o.response_deadline > NOW() OR o.response_deadline IS NULL)`,
+    )
   }
   if (flags.hideServices) {
     // Best-effort heuristic: exclude opps where the literal word "service"
@@ -182,6 +187,10 @@ export interface OpportunityDetail {
   is_product: boolean | null
   commentary: string | null
   is_starred: boolean | null
+  // Which model family produced the parse — 'haiku' (tier 1) or 'gemini'
+  // (fallback tier). NULL = parsed before this column existed, or never
+  // parsed. See backend opportunity.py:parsing_backend.
+  parsing_backend: string | null
   extra: unknown
 }
 
@@ -192,7 +201,7 @@ export async function getOpportunity(id: string): Promise<OpportunityDetail | nu
             source, source_id, posted_date, response_deadline,
             stage, status, estimated_value_min, estimated_value_max,
             place_of_performance, naics_code, set_aside_type,
-            is_product, commentary, is_starred, extra
+            is_product, commentary, is_starred, parsing_backend, extra
      FROM opportunities
      WHERE id = $1`,
     [id],

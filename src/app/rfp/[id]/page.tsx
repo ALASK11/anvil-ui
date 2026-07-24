@@ -52,6 +52,41 @@ function isInlineViewable(filename: string | null): boolean {
   return /\.(pdf|docx)$/i.test(filename)
 }
 
+// Small pill showing which model family parsed this opp. NULL renders
+// nothing — could mean "never parsed" or "parsed before the column
+// existed"; both are edge cases and either way we have no signal to show.
+function ParsingBackendBadge({ backend }: { backend: string | null }) {
+  if (!backend) return null
+  const label = backend === 'haiku' ? 'Haiku' : backend === 'gemini' ? 'Gemini' : backend
+  const color =
+    backend === 'haiku'
+      ? 'var(--yellow)'
+      : backend === 'gemini'
+        ? 'var(--purple)'
+        : 'var(--text-muted)'
+  return (
+    <span
+      title={`This opportunity was parsed by the "${backend}" model family (opportunities.parsing_backend).`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.35rem',
+        padding: '0.15rem 0.55rem',
+        borderRadius: 999,
+        border: `1px solid ${color}`,
+        color,
+        fontSize: '0.72rem',
+        fontWeight: 600,
+        letterSpacing: '0.02em',
+        textTransform: 'uppercase',
+        lineHeight: 1.4,
+      }}
+    >
+      Parsed by {label}
+    </span>
+  )
+}
+
 interface PageProps {
   params: Promise<{ id: string }>
 }
@@ -104,11 +139,12 @@ export default async function BidDetailPage({ params }: PageProps) {
   return (
     <>
       <div className="page-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <StarToggle opportunityId={opp.id} initialStarred={opp.is_starred === true} />
           <Link href="/rfp" style={{ color: 'var(--accent)', fontSize: '0.85rem' }}>
             ← Back to RFPs
           </Link>
+          <ParsingBackendBadge backend={opp.parsing_backend} />
         </div>
         <h1 style={{ marginTop: '0.5rem' }}>{opp.title ?? 'Untitled opportunity'}</h1>
         <p style={{ color: 'var(--text-muted)' }}>
